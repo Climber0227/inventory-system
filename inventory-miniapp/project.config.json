@@ -1,4 +1,5 @@
 {
+  "miniprogramRoot": "dist/dev/mp-weixin/",
   "setting": {
     "es6": true,
     "postcss": true,
@@ -11,7 +12,17 @@
       "disablePlugins": [],
       "outputPath": ""
     },
-    "useCompilerPlugins": false
+    "useCompilerPlugins": false,
+    "compileWorklet": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "minifyWXSS": true,
+    "minifyWXML": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true
   },
   "compileType": "miniprogram",
   "simulatorPluginLibVersion": {},
@@ -20,5 +31,6 @@
     "include": []
   },
   "appid": "wx884e2972a858de74",
-  "editorSetting": {}
+  "editorSetting": {},
+  "libVersion": "3.15.2"
 }

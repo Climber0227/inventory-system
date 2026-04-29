@@ -117,7 +117,12 @@ public class ProductService {
     }
 
     public Product getById(Long id) {
-        return productMapper.selectById(id);
+        Product product = productMapper.selectById(id);
+        if (product != null && product.getCategoryId() != null) {
+            ProductCategory cat = categoryMapper.selectById(product.getCategoryId());
+            if (cat != null) product.setCategoryName(cat.getName());
+        }
+        return product;
     }
 
     private void enrichInventory(Product p) {

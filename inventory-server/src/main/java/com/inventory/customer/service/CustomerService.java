@@ -35,6 +35,8 @@ public class CustomerService {
         return customerMapper.selectPage(page, wrapper);
     }
 
+    public Customer getById(Long id) { return customerMapper.selectById(id); }
+
     public List<Customer> listAll() {
         return customerMapper.selectList(
                 new LambdaQueryWrapper<Customer>().eq(Customer::getStatus, 1)

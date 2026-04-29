@@ -4,12 +4,17 @@ import { useUserStore } from '@/store/user'
 import request from '@/api/request'
 
 const userStore = useUserStore()
-const userName = ref(userStore.userInfo?.realName || '管理员')
+const userName = ref(userStore.userInfo?.realName || userStore.userInfo?.username || '用户')
 const alertCount = ref(0)
 
 function goPage(url) { uni.navigateTo({ url }) }
 function switchTab(url) { uni.switchTab({ url }) }
-function logout() { userStore.logout() }
+function confirmLogout() {
+  uni.showModal({ title: '提示', content: '确定要退出登录吗？', success: (r) => { if (r.confirm) userStore.logout() } })
+}
+function changePwd() {
+  uni.showModal({ title: '修改密码', content: '请联系管理员重置密码', showCancel: false })
+}
 
 onMounted(async () => {
   try {
@@ -22,9 +27,9 @@ onMounted(async () => {
 <template>
   <view class="page">
     <view class="profile-header">
-      <view class="avatar">管</view>
+      <view class="avatar">{{ (userName)[0] }}</view>
       <text class="name">{{ userName }}</text>
-      <text class="role">系统管理员</text>
+      <text class="role">{{ userStore.isAdmin ? '管理员' : '员工' }}</text>
     </view>
 
     <view class="menu-list">
@@ -36,7 +41,7 @@ onMounted(async () => {
         <text class="menu-lbl">库存预警</text>
         <text style="color:#c62828;font-size:13px;">{{ alertCount }}</text>
       </view>
-      <view class="menu-item">
+      <view class="menu-item" @click="changePwd">
         <text class="menu-lbl">修改密码</text>
         <text class="menu-arrow">›</text>
       </view>
@@ -46,7 +51,7 @@ onMounted(async () => {
       </view>
     </view>
 
-    <button class="logout-btn" @click="logout">退出登录</button>
+    <button class="logout-btn" @click="confirmLogout">退出登录</button>
   </view>
 </template>
 

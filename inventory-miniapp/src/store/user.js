@@ -8,6 +8,7 @@ export const useUserStore = defineStore('user', {
   }),
   getters: {
     isLoggedIn: (state) => !!state.token,
+    isAdmin: (state) => state.userInfo?.isAdmin === true,
   },
   actions: {
     async login(username, password) {

@@ -53,6 +53,12 @@ public class SupplierController {
         ExcelUtil.export(response, voList, "供应商列表", SupplierExportVO.class);
     }
 
+    @Operation(summary = "获取供应商详情")
+    @GetMapping("/{id}")
+    public R<Supplier> getById(@PathVariable Long id) {
+        return R.ok(supplierService.getById(id));
+    }
+
     @Operation(summary = "查询所有启用的供应商")
     @GetMapping("/list")
     public R<List<Supplier>> list() {

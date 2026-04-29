@@ -1,5 +1,5 @@
 // 修改此处 BASE_URL 为实际后端地址（开发用局域网IP，生产用域名）
-const BASE_URL = 'http://localhost:8080/api/v1'
+const BASE_URL = 'http://192.168.10.162:8080/api/v1'
 
 function getToken() {
   return uni.getStorageSync('token')
@@ -65,7 +65,7 @@ export default {
   put(url, data) {
     return request('PUT', url, data)
   },
-  delete(url) {
+  del(url) {
     return request('DELETE', url)
   },
 }

@@ -36,6 +36,8 @@ public class SupplierService {
         return supplierMapper.selectPage(page, wrapper);
     }
 
+    public Supplier getById(Long id) { return supplierMapper.selectById(id); }
+
     public List<Supplier> listAll() {
         return supplierMapper.selectList(
                 new LambdaQueryWrapper<Supplier>().eq(Supplier::getStatus, 1)

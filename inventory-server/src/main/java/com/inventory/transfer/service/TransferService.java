@@ -219,7 +219,7 @@ public class TransferService {
             LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
                     .eq(Inventory::getProductId, item.getProductId())
                     .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
-                    .eq(item.getBatchNo() != null, Inventory::getBatchNo, item.getBatchNo());
+                    .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo());
             Inventory inv = inventoryMapper.selectOne(wrapper);
             int available = (inv != null ? inv.getQuantity() : 0) - (inv != null ? inv.getLockedQty() : 0);
             if (available < item.getQuantity()) {
@@ -275,7 +275,7 @@ public class TransferService {
             LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
                     .eq(Inventory::getProductId, item.getProductId())
                     .eq(Inventory::getWarehouseId, transfer.getToWarehouseId())
-                    .eq(item.getBatchNo() != null, Inventory::getBatchNo, item.getBatchNo());
+                    .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo());
             Inventory inv = inventoryMapper.selectOne(wrapper);
             int beforeQty = inv != null ? inv.getQuantity() : 0;
             int afterQty = beforeQty + item.getQuantity();
@@ -383,7 +383,7 @@ public class TransferService {
                 LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
                         .eq(Inventory::getProductId, item.getProductId())
                         .eq(Inventory::getWarehouseId, transfer.getToWarehouseId())
-                        .eq(item.getBatchNo() != null, Inventory::getBatchNo, item.getBatchNo());
+                        .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo());
                 Inventory inv = inventoryMapper.selectOne(wrapper);
                 if (inv != null) {
                     int beforeQty = inv.getQuantity();
@@ -411,7 +411,7 @@ public class TransferService {
                 LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
                         .eq(Inventory::getProductId, item.getProductId())
                         .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
-                        .eq(item.getBatchNo() != null, Inventory::getBatchNo, item.getBatchNo());
+                        .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo());
                 Inventory inv = inventoryMapper.selectOne(wrapper);
                 if (inv != null) {
                     int beforeQty = inv.getQuantity();

@@ -1,15 +1,19 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
+import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import request from '@/api/request'
+import FloatingHome from '@/components/FloatingHome'
 
 const alerts = ref([])
 
-onMounted(async () => {
+async function loadAlerts() {
   try {
     const res = await request.get('/report/inventory-alert')
     alerts.value = res.data || []
   } catch { /* ignore */ }
-})
+}
+onShow(loadAlerts)
+onPullDownRefresh(() => { loadAlerts(); uni.stopPullDownRefresh() })
 </script>
 
 <template>
@@ -22,6 +26,7 @@ onMounted(async () => {
       <text class="alert-qty">{{ r.quantity }} / {{ r.minStock }}</text>
     </view>
     <view v-if="!alerts.length" style="text-align:center;color:#999;padding:40px 0;">暂无预警</view>
+    <FloatingHome />
   </view>
 </template>
 

@@ -44,6 +44,12 @@ public class WarehouseController {
         return R.ok(PageResult.of(warehouseService.page(new Page<>(page, size), name, contact, phone, address, status)));
     }
 
+    @Operation(summary = "获取仓库详情")
+    @GetMapping("/{id}")
+    public R<Warehouse> getById(@PathVariable Long id) {
+        return R.ok(warehouseService.getById(id));
+    }
+
     @Operation(summary = "新增仓库")
     @PostMapping
     public R<Void> create(@RequestBody Warehouse warehouse) {

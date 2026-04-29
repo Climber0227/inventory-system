@@ -1,23 +1,31 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
+import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import request from '@/api/request'
+import FloatingHome from '@/components/FloatingHome'
 
 const list = ref([])
 const loading = ref(false)
+const keyword = ref('')
 const statusMap = { 0: '草稿', 1: '已完成', 2: '已取消' }
 
 async function fetchList() {
   loading.value = true
   try {
-    const res = await request.get('/transfer/page', { params: { page: 1, size: 20 } })
+    const params = { page: 1, size: 20 }
+    if (keyword.value) params.orderNo = keyword.value
+    const res = await request.get('/transfer/page', { params })
     list.value = res.data.records
   } finally { loading.value = false }
 }
 
 function goCreate() { uni.navigateTo({ url: '/pages/transfer/create' }) }
 function goDetail(id) { uni.navigateTo({ url: `/pages/transfer/detail?id=${id}` }) }
+function onSearch() { fetchList() }
+function onInput(e) { if (!e.detail.value) fetchList() }
 
-onMounted(fetchList)
+onShow(fetchList)
+onPullDownRefresh(() => { fetchList(); uni.stopPullDownRefresh() })
 </script>
 
 <template>
@@ -25,6 +33,10 @@ onMounted(fetchList)
     <view class="page-header">
       <text class="page-title">库存调拨</text>
       <button class="add-btn" @click="goCreate">+ 新建</button>
+    </view>
+
+    <view class="search-bar">
+      <input v-model="keyword" class="search-input" placeholder="搜索调拨单号" @confirm="onSearch" @input="onInput" />
     </view>
 
     <view v-if="loading" class="loading">加载中...</view>
@@ -39,19 +51,22 @@ onMounted(fetchList)
           <text>数量: {{ item.totalQuantity }}</text>
         </view>
         <view class="card-footer">
-          <text>{{ item.orderDate }}</text>
+          <text>日期: {{ item.orderDate }}  创建: {{ item.createTime?.slice(0,16) || '-' }}</text>
         </view>
       </view>
       <view v-if="list.length === 0" class="empty">暂无调拨单</view>
     </view>
+    <FloatingHome />
   </view>
 </template>
 
 <style scoped>
 .page { padding: 16px; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
 .page-title { font-size: 18px; font-weight: bold; }
 .add-btn { background: #2e7d32; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
+.search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+.search-input { flex: 1; border: 1px solid #dcdfe6; border-radius: 6px; padding: 10px 12px; font-size: 14px; background: #fff; }
 .card { background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
 .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .order-no { font-weight: bold; font-size: 15px; }
