@@ -1,0 +1,43 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: inventory-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: inventory
+    ports:
+      - "3307:3306"
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./sql/01-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+      - ./sql/02-seed-data.sql:/docker-entrypoint-initdb.d/02-seed-data.sql
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  server:
+    build: ./inventory-server
+    container_name: inventory-server
+    restart: unless-stopped
+    depends_on:
+      - mysql
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/inventory?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&nullCatalogMeansCurrent=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root123
+      SPRING_JPA_HIBERNATE_DDL_AUTO: none
+      APP_UPLOAD_BASE_PATH: /app/uploads
+    volumes:
+      - ./data/uploads:/app/uploads
+    ports:
+      - "8080:8080"
+
+  admin:
+    build: ./inventory-admin
+    container_name: inventory-admin
+    restart: unless-stopped
+    depends_on:
+      - server
+    ports:
+      - "80:80"

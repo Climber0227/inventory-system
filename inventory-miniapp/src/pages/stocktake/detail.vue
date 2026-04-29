@@ -2,13 +2,24 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
+import FloatingHome from '@/components/FloatingHome'
 
 const order = ref(null)
+const items = ref([])
 const loading = ref(false)
+const actionLoading = ref(false)
 const statusMap = { 0: '盘点中', 1: '已审核', 2: '已调整' }
 
 let id = null
-onLoad((options) => { id = options?.id; fetchDetail() })
+onLoad(async (options) => {
+  if (options?.id) {
+    id = options.id
+  } else if (options?.orderNo) {
+    const res = await request.get('/stock-take/page', { params: { orderNo: options.orderNo, page: 1, size: 1 } })
+    if (res.data.records?.length) id = res.data.records[0].id
+  }
+  if (id) fetchDetail()
+})
 
 async function fetchDetail() {
   if (!id) return
@@ -16,7 +27,34 @@ async function fetchDetail() {
   try {
     const res = await request.get(`/stock-take/${id}`)
     order.value = res.data
+    items.value = (res.data.items || []).map(i => ({ ...i }))
   } finally { loading.value = false }
+}
+
+async function approveTake() {
+  if (!order.value?.id) return
+  actionLoading.value = true
+  try {
+    await request.put(`/stock-take/${order.value.id}/approve`)
+    uni.showToast({ title: '审核通过', icon: 'success' })
+    fetchDetail()
+  } finally { actionLoading.value = false }
+}
+
+async function adjustTake() {
+  if (!order.value?.id) return
+  actionLoading.value = true
+  try {
+    await request.put(`/stock-take/${order.value.id}/adjust`)
+    uni.showToast({ title: '调整完成', icon: 'success' })
+    fetchDetail()
+  } finally { actionLoading.value = false }
+}
+
+async function saveItem(item) {
+  try {
+    await request.put(`/stock-take/item/${item.id}`, { actualQty: item.actualQty })
+  } catch { /* ignore */ }
 }
 </script>
 
@@ -37,6 +75,39 @@ async function fetchDetail() {
       </view>
     </view>
     <view v-else style="text-align:center;padding:40px;color:#999;">未找到盘点单</view>
+
+    <!-- 商品明细 -->
+    <view v-if="order?.items && order.items.length > 0" class="items-section">
+      <view class="items-header">
+        <text class="items-title">商品明细 ({{ order.items.length }})</text>
+      </view>
+      <view v-for="item in items" :key="item.id" class="item-card">
+        <view class="item-info">
+          <text class="item-name">{{ item.productName || '-' }}</text>
+          <text class="item-code">{{ item.productCode || '' }}</text>
+        </view>
+        <view class="qty-row">
+          <view class="qty-field">
+            <text class="label-sm">账面</text>
+            <text class="qty-val">{{ item.bookQty }}</text>
+          </view>
+          <view class="qty-field">
+            <text class="label-sm">实盘</text>
+            <input v-if="order.status === 0" v-model="item.actualQty" class="input-sm" type="number" @blur="saveItem(item)" />
+            <text v-else class="qty-val">{{ item.actualQty }}</text>
+          </view>
+          <view class="qty-field">
+            <text class="label-sm">差异</text>
+            <text class="qty-diff" :class="{ 'has-diff': item.diffQty !== 0 }">{{ item.diffQty > 0 ? '+' : '' }}{{ item.diffQty }}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+    <view class="action-bar">
+      <button v-if="order?.status === 0" class="btn-approve" :loading="actionLoading" @click="approveTake">审核通过</button>
+      <button v-if="order?.status === 1" class="btn-adjust" :loading="actionLoading" @click="adjustTake">执行调整</button>
+    </view>
+    <FloatingHome />
   </view>
 </template>
 
@@ -52,4 +123,21 @@ async function fetchDetail() {
 .ig-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
 .ig-row:last-child { border-bottom: none; }
 .ig-l { color: #999; } .ig-v { font-weight: 500; color: #333; }
+.action-bar { margin-top: 16px; padding-bottom: 32px; }
+.btn-approve { width: 100%; background: #2e7d32; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 16px; }
+.btn-adjust { width: 100%; background: #1565c0; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 16px; }
+.items-section { margin-top: 10px; }
+.items-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.items-title { font-size: 15px; font-weight: 600; }
+.item-card { background: #fff; border-radius: 8px; padding: 12px; margin-bottom: 8px; }
+.item-info { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
+.item-name { font-size: 14px; font-weight: 500; }
+.item-code { font-size: 11px; color: #999; }
+.qty-row { display: flex; gap: 12px; }
+.qty-field { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.label-sm { font-size: 12px; color: #666; }
+.qty-val { font-size: 16px; font-weight: bold; color: #333; }
+.qty-diff { font-size: 16px; font-weight: bold; color: #666; }
+.has-diff { color: #f56c6c; }
+.input-sm { border: 1px solid #2e7d32; border-radius: 4px; padding: 6px 8px; width: 60px; text-align: center; }
 </style>

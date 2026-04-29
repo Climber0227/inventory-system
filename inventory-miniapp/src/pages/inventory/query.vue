@@ -1,5 +1,6 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
+import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import request from '@/api/request'
 
 const list = ref([])
@@ -7,6 +8,8 @@ const loading = ref(false)
 const warehouses = ref([])
 const warehouseId = ref(null)
 const keyword = ref('')
+const codeKeyword = ref('')
+let loaded = false
 
 async function fetchData() {
   loading.value = true
@@ -14,6 +17,7 @@ async function fetchData() {
     const params = { page: 1, size: 50 }
     if (warehouseId.value) params.warehouseId = warehouseId.value
     if (keyword.value) params.productName = keyword.value
+    if (codeKeyword.value) params.productCode = codeKeyword.value
     const res = await request.get('/inventory/page', { params })
     list.value = res.data.records
   } finally { loading.value = false }
@@ -26,7 +30,11 @@ async function fetchWarehouses() {
 
 function onSearch() { fetchData() }
 
-onMounted(() => { fetchWarehouses(); fetchData() })
+onShow(() => {
+  if (!loaded) { loaded = true; fetchWarehouses() }
+  fetchData()
+})
+onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 </script>
 
 <template>
@@ -37,6 +45,7 @@ onMounted(() => { fetchWarehouses(); fetchData() })
     </view>
     <view class="search-bar">
       <input v-model="keyword" class="search-input" placeholder="搜索商品名称" @confirm="onSearch" />
+      <input v-model="codeKeyword" class="search-input" placeholder="编码/单号" @confirm="onSearch" style="flex:0.8;" />
       <picker @change="e => { warehouseId = warehouses[e.detail.value]?.id; fetchData() }" :range="warehouses" range-key="name">
         <view class="filter-btn">{{ warehouses.find(w => w.id === warehouseId)?.name || '全部仓库' }}</view>
       </picker>
@@ -64,7 +73,7 @@ onMounted(() => { fetchWarehouses(); fetchData() })
 .page-title { font-size: 16px; font-weight: 600; }
 .nav-link { font-size: 13px; color: #2e7d32; }
 .search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
-.search-input { flex: 1; border: 1px solid #dcdfe6; border-radius: 6px; padding: 8px 12px; font-size: 14px; background: #fff; }
+.search-input { flex: 1; border: 1px solid #dcdfe6; border-radius: 6px; padding: 10px 12px; font-size: 14px; background: #fff; }
 .filter-btn { border: 1px solid #dcdfe6; border-radius: 6px; padding: 8px 12px; font-size: 14px; background: #fff; white-space: nowrap; }
 .card { background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
 .ir { display: flex; justify-content: space-between; align-items: center; }

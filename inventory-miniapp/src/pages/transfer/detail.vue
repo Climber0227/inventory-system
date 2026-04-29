@@ -2,13 +2,22 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
+import FloatingHome from '@/components/FloatingHome'
 
 const order = ref(null)
 const loading = ref(false)
 const statusMap = { 0: '草稿', 1: '已完成', 2: '已取消' }
 
 let id = null
-onLoad((options) => { id = options?.id; fetchDetail() })
+onLoad(async (options) => {
+  if (options?.id) {
+    id = options.id
+  } else if (options?.orderNo) {
+    const res = await request.get('/transfer/page', { params: { orderNo: options.orderNo, page: 1, size: 1 } })
+    if (res.data.records?.length) id = res.data.records[0].id
+  }
+  if (id) fetchDetail()
+})
 
 async function fetchDetail() {
   if (!id) return
@@ -34,8 +43,20 @@ async function fetchDetail() {
         <view class="r"><text class="l">数量</text><text class="v">{{ order.totalQuantity }}</text></view>
         <view class="r"><text class="l">调拨日期</text><text class="v">{{ order.orderDate || '-' }}</text></view>
       </view>
+
+      <!-- 商品明细 -->
+      <view class="pl">
+        <text class="pl-title">商品明细</text>
+        <view v-if="order.items && order.items.length">
+          <view class="pi" v-for="item in order.items" :key="item.id">
+            <view><text class="pi-name">{{ item.productName || '-' }}</text><text class="pi-detail">数量: {{ item.quantity }}  批次: {{ item.batchNo || '-' }}</text></view>
+          </view>
+        </view>
+        <view v-else style="text-align:center;color:#999;padding:20px;">暂无明细</view>
+      </view>
     </view>
     <view v-else style="text-align:center;padding:40px;color:#999;">未找到调拨单</view>
+    <FloatingHome />
   </view>
 </template>
 
@@ -51,4 +72,8 @@ async function fetchDetail() {
 .ig .r { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
 .ig .r:last-child { border-bottom: none; }
 .ig .l { color: #999; } .ig .v { font-weight: 500; }
+.pl { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 10px; }
+.pl-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: block; }
+.pi { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; }
+.pi-name { font-weight: 500; display: block; } .pi-detail { color: #666; font-size: 12px; }
 </style>

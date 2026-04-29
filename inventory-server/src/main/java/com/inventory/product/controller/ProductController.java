@@ -60,9 +60,9 @@ public class ProductController {
 
     @Operation(summary = "新增商品")
     @PostMapping
-    public R<Void> create(@RequestBody Product product) {
+    public R<Long> create(@RequestBody Product product) {
         productService.save(product);
-        return R.ok();
+        return R.ok(product.getId());
     }
 
     @Operation(summary = "更新商品")

@@ -1,17 +1,24 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
+import FloatingHome from '@/components/FloatingHome'
 
 const order = ref(null)
 const loading = ref(false)
+const actionLoading = ref(false)
 const statusMap = { 0: '草稿', 1: '已入库', 2: '已取消' }
 
 let id = null
 
-onLoad((options) => {
-  id = options?.id
-  fetchDetail()
+onLoad(async (options) => {
+  if (options?.id) {
+    id = options.id
+  } else if (options?.orderNo) {
+    const res = await request.get('/purchase-order/page', { params: { orderNo: options.orderNo, page: 1, size: 1 } })
+    if (res.data.records?.length) id = res.data.records[0].id
+  }
+  if (id) fetchDetail()
 })
 
 async function fetchDetail() {
@@ -21,6 +28,30 @@ async function fetchDetail() {
     const res = await request.get(`/purchase-order/${id}`)
     order.value = res.data
   } finally { loading.value = false }
+}
+
+async function submitOrder() {
+  actionLoading.value = true
+  try {
+    await request.put(`/purchase-order/${id}/submit`)
+    uni.showToast({ title: '已提交', icon: 'success' })
+    fetchDetail()
+  } finally { actionLoading.value = false }
+}
+
+async function cancelOrder() {
+  uni.showModal({
+    title: '确认取消', content: '确定要取消此入库单吗？',
+    success: async (r) => {
+      if (!r.confirm) return
+      actionLoading.value = true
+      try {
+        await request.put(`/purchase-order/${id}/cancel`)
+        uni.showToast({ title: '已取消', icon: 'success' })
+        fetchDetail()
+      } finally { actionLoading.value = false }
+    },
+  })
 }
 </script>
 
@@ -55,6 +86,12 @@ async function fetchDetail() {
       </view>
     </view>
     <view v-else style="text-align:center;padding:40px;color:#999;">未找到入库单</view>
+
+    <view class="action-bar">
+      <button v-if="order?.status === 0" class="btn-submit" :loading="actionLoading" @click="submitOrder">提交入库</button>
+      <button v-if="order?.status === 0" class="btn-cancel" :loading="actionLoading" @click="cancelOrder">取消</button>
+    </view>
+    <FloatingHome />
   </view>
 </template>
 
@@ -76,4 +113,7 @@ async function fetchDetail() {
 .ps-name { font-weight: 500; display: block; } .ps-detail { color: #666; font-size: 12px; }
 .ps-amt { color: #e65100; font-weight: 600; }
 .ps-total { display: flex; justify-content: space-between; padding: 12px 0 0; font-weight: 600; font-size: 14px; border-top: 1px solid #eee; margin-top: 8px; }
+.action-bar { display: flex; gap: 10px; margin-top: 12px; }
+.btn-submit { flex: 1; background: #2e7d32; color: #fff; border: none; border-radius: 8px; height: 42px; line-height: 42px; font-size: 15px; }
+.btn-cancel { flex: 1; background: #fff; color: #666; border: 1px solid #dcdfe6; border-radius: 8px; height: 42px; line-height: 42px; font-size: 15px; }
 </style>

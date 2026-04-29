@@ -45,6 +45,8 @@ public class WarehouseService {
         this.productMapper = productMapper;
     }
 
+    public Warehouse getById(Long id) { return warehouseMapper.selectById(id); }
+
     public List<Warehouse> listAll() {
         List<Warehouse> list = warehouseMapper.selectList(new LambdaQueryWrapper<Warehouse>()
                 .eq(Warehouse::getStatus, 1).orderByAsc(Warehouse::getId));

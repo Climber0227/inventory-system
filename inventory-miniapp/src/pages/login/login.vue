@@ -61,12 +61,12 @@ async function handleLogin() {
 .login-card { width: 100%; }
 .form-item { margin-bottom: 14px; }
 .input {
-  width: 100%; height: 44px;
+  width: 100%; height: 48px;
   border: 1px solid #e0e0e0; border-radius: 8px;
   padding: 0 14px; font-size: 15px; outline: none;
   box-sizing: border-box;
 }
-.input:focus { border-color: #2e7d32; }
+.input:focus { border-color: #2e7d32;  }
 .login-btn {
   width: 100%; height: 44px; line-height: 44px;
   background: #2e7d32; color: #fff;

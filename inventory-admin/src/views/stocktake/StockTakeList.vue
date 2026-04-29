@@ -124,7 +124,7 @@ onMounted(async () => {
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="router.push(`/stocktake/${row.id}`)">详情</el-button>
-            <el-button v-if="userStore.isAdmin" size="small" type="danger" @click="handleDelete(row)">作废</el-button>
+            <el-button v-if="userStore.isAdmin && row.status !== 2" size="small" type="danger" @click="handleDelete(row)">作废</el-button>
           </template>
         </el-table-column>
       </el-table>

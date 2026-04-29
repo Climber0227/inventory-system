@@ -37,6 +37,12 @@ public class CustomerController {
         return R.ok(PageResult.of(customerService.page(new Page<>(page, size), name, contact, phone, address)));
     }
 
+    @Operation(summary = "获取客户详情")
+    @GetMapping("/{id}")
+    public R<Customer> getById(@PathVariable Long id) {
+        return R.ok(customerService.getById(id));
+    }
+
     @Operation(summary = "查询所有启用的客户")
     @GetMapping("/list")
     public R<List<Customer>> list() {
