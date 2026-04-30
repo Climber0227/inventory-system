@@ -246,7 +246,7 @@ export interface SysUser extends BaseEntity {
   phone: string | null
   email: string | null
   status: number
-  roleNames?: string[]
+  role: number
 }
 
 // 用户信息（登录返回）
@@ -256,6 +256,6 @@ export interface UserInfo {
   realName: string
   position: string | null
   token: string
-  roles: string[]
+  role: number
   isAdmin: boolean
 }

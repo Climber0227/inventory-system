@@ -164,7 +164,6 @@ function handleLogin() {
           </el-button>
         </el-form-item>
       </el-form>
-      <p class="login-tip">演示账号：admin / 123456</p>
     </div>
 
     <p class="login-footer">© 2026 进销存管理系统 v2.0</p>
@@ -243,7 +242,6 @@ function handleLogin() {
   border: none !important; transition: all 0.3s;
 }
 .login-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 28px rgba(46, 125, 50, 0.35) !important; }
-.login-tip { text-align: center; font-size: 12px; color: #ccc; margin-top: 14px; }
 .login-footer { position: absolute; bottom: 16px; color: #bbb; font-size: 11px; z-index: 2; }
 </style>
 

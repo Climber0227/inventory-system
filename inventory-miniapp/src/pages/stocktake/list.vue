@@ -25,10 +25,7 @@ async function fetchList() {
   } finally { loading.value = false }
 }
 
-function goDetail(id) {
-  uni.navigateTo({ url: `/pages/stocktake/detail?id=${id}` })
-}
-
+function goDetail(id) { uni.navigateTo({ url: `/pages/stocktake/detail?id=${id}` }) }
 function onSearch() { fetchList() }
 function onInput(e) { if (!e.detail.value) fetchList() }
 
@@ -38,35 +35,53 @@ onPullDownRefresh(() => { fetchList(); uni.stopPullDownRefresh() })
 
 <template>
   <view class="page">
-    <view class="page-header">
+    <view class="page-bar">
       <text class="page-title">库存盘点</text>
-      <button class="add-btn" @click="uni.navigateTo({ url: '/pages/stocktake/create' })">+ 新建</button>
+      <text class="add-btn" @click="uni.navigateTo({ url: '/pages/stocktake/create' })">+ 新建</text>
     </view>
 
-    <view class="search-bar">
-      <input v-model="keyword" class="search-input" placeholder="搜索盘点单号" @confirm="onSearch" @input="onInput" />
+    <view class="search-bar" style="display:flex;gap:8px;">
+      <input v-model="keyword" class="search-input" placeholder="搜索盘点单号" style="flex:1;" @confirm="onSearch" @input="onInput" />
       <picker @change="e => { takeType = typeOptions[e.detail.value]?.v; fetchList() }" :range="typeOptions" range-key="l">
-        <view class="filter-btn">{{ typeOptions.find(t => t.v === takeType)?.l }}</view>
+        <view class="filter-pill">{{ typeOptions.find(t => t.v === takeType)?.l }}</view>
       </picker>
       <picker @change="e => { filterStatus = statusOptions[e.detail.value]?.v; fetchList() }" :range="statusOptions" range-key="l">
-        <view class="filter-btn">{{ statusOptions.find(s => s.v === filterStatus)?.l }}</view>
+        <view class="filter-pill">{{ statusOptions.find(s => s.v === filterStatus)?.l }}</view>
       </picker>
     </view>
 
-    <view v-if="loading" class="loading">加载中...</view>
+    <view v-if="loading">
+      <view class="skeleton" v-for="n in 3" :key="n">
+        <view class="skeleton-line w60"></view>
+        <view class="skeleton-line w80"></view>
+        <view class="skeleton-line w40" style="margin-bottom:0;"></view>
+      </view>
+    </view>
     <view v-else>
-      <view v-for="item in list" :key="item.id" class="card" @click="goDetail(item.id)">
+      <view v-for="item in list" :key="item.id" class="card"
+        :style="{ borderLeftColor: item.status === 1 ? '#2e7d32' : item.status === 2 ? '#1565c0' : '#ff9800' }">
         <view class="card-header">
-          <text class="order-no">{{ item.orderNo }}</text>
+          <view style="display:flex;align-items:center;gap:8px;">
+            <text style="font-size:16px;">📋</text>
+            <text class="order-no">{{ item.orderNo }}</text>
+          </view>
           <text class="status" :class="'status-' + item.status">{{ statusMap[item.status] || '未知' }}</text>
         </view>
         <view class="card-body">
-          <text>仓库: {{ item.warehouseName || '-' }}</text>
-          <text>盘点方式: {{ item.takeType === 0 ? '全盘' : '抽盘' }}</text>
-          <text>商品数: {{ item.totalItems }} | 差异: {{ item.diffItems }}</text>
+          <view style="display:flex;justify-content:space-between;">
+            <text>{{ item.warehouseName || '-' }}</text>
+            <text>{{ item.takeType === 0 ? '全盘' : '抽盘' }}</text>
+          </view>
+          <view style="display:flex;justify-content:space-between;color:#888;">
+            <text>商品 {{ item.totalItems }} 项</text>
+            <text :style="{ color: item.diffItems > 0 ? '#c62828' : '#888', fontWeight: item.diffItems > 0 ? 600 : 400 }">
+              差异 {{ item.diffItems }}
+            </text>
+          </view>
         </view>
         <view class="card-footer">
-          <text>日期: {{ item.orderDate }}  创建: {{ item.createTime?.slice(0,16) || '-' }}</text>
+          <text>{{ item.orderDate }}</text>
+          <text>{{ item.operatorName }}</text>
         </view>
       </view>
       <view v-if="list.length === 0" class="empty">暂无盘点单</view>
@@ -76,21 +91,5 @@ onPullDownRefresh(() => { fetchList(); uni.stopPullDownRefresh() })
 </template>
 
 <style scoped>
-.page { padding: 16px; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.page-title { font-size: 18px; font-weight: bold; }
-.add-btn { background: #2e7d32; color: #fff; border: none; border-radius: 6px; padding: 8px 16px; font-size: 14px; }
-.search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
-.search-input { flex: 1; border: 1px solid #dcdfe6; border-radius: 6px; padding: 10px 12px; font-size: 14px; background: #fff; }
-.filter-btn { border: 1px solid #dcdfe6; border-radius: 6px; padding: 8px 12px; font-size: 14px; background: #fff; white-space: nowrap; }
-.card { background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.order-no { font-weight: bold; font-size: 15px; }
-.status { font-size: 12px; padding: 2px 8px; border-radius: 4px; }
-.status-0 { background: #fff8e1; color: #f57f17; }
-.status-1 { background: #e8f5e9; color: #2e7d32; }
-.status-2 { background: #e3f2fd; color: #1565c0; }
-.card-body { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #666; }
-.card-footer { margin-top: 8px; font-size: 12px; color: #999; }
-.loading, .empty { text-align: center; color: #999; padding: 40px 0; }
+.filter-pill { background:#fff; border-radius:10px; padding:12px 14px; font-size:13px; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
 </style>

@@ -1,6 +1,6 @@
 -- =====================================================
 -- 进销存管理系统 — 数据库建表脚本
--- 版本: v1.0
+-- 版本: v2.0
 -- 数据库: MySQL 8.0
 -- =====================================================
 
@@ -12,7 +12,7 @@ USE `inventory`;
 -- 1. 系统管理
 -- =====================================================
 
--- 1.1 用户表
+-- 1.1 用户表（角色使用 role 字段，1=管理员 2=员工）
 CREATE TABLE `sys_user` (
   `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
   `username`    VARCHAR(64)  NOT NULL COMMENT '用户名',
@@ -22,67 +22,18 @@ CREATE TABLE `sys_user` (
   `email`       VARCHAR(100) NULL     COMMENT '邮箱',
   `avatar`      VARCHAR(500) NULL     COMMENT '头像',
   `position`    VARCHAR(50)  NULL     COMMENT '职位（如销售员、仓管员、养护工）',
+  `role`        TINYINT      DEFAULT 2 COMMENT '角色 1=管理员 2=员工',
   `status`      TINYINT      DEFAULT 1 COMMENT '状态 0=禁用 1=启用',
   `deleted`     TINYINT      DEFAULT 0 COMMENT '逻辑删除',
   `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`),
-  KEY `idx_status` (`status`)
+  KEY `idx_status` (`status`),
+  KEY `idx_role` (`role`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表';
 
--- 1.2 角色表
-CREATE TABLE `sys_role` (
-  `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `name`        VARCHAR(64)  NOT NULL COMMENT '角色名称',
-  `code`        VARCHAR(64)  NOT NULL COMMENT '角色编码',
-  `description` VARCHAR(255) NULL     COMMENT '描述',
-  `status`      TINYINT      DEFAULT 1 COMMENT '状态',
-  `deleted`     TINYINT      DEFAULT 0,
-  `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_code` (`code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色表';
-
--- 1.3 用户角色关联表
-CREATE TABLE `sys_user_role` (
-  `id`          BIGINT   NOT NULL AUTO_INCREMENT,
-  `user_id`     BIGINT   NOT NULL COMMENT '用户ID',
-  `role_id`     BIGINT   NOT NULL COMMENT '角色ID',
-  `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_role` (`user_id`, `role_id`),
-  KEY `idx_role` (`role_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户角色关联表';
-
--- 1.4 权限表
-CREATE TABLE `sys_permission` (
-  `id`          BIGINT       NOT NULL AUTO_INCREMENT,
-  `name`        VARCHAR(64)  NOT NULL COMMENT '权限名称',
-  `code`        VARCHAR(128) NOT NULL COMMENT '权限编码',
-  `type`        TINYINT      DEFAULT 1 COMMENT '类型 1=菜单 2=按钮 3=API',
-  `parent_id`   BIGINT       NULL     COMMENT '父权限ID',
-  `sort`        INT          DEFAULT 0 COMMENT '排序',
-  `path`        VARCHAR(255) NULL     COMMENT '路由路径',
-  `icon`        VARCHAR(64)  NULL     COMMENT '图标',
-  `status`      TINYINT      DEFAULT 1,
-  `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_parent` (`parent_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='权限表';
-
--- 1.5 角色权限关联表
-CREATE TABLE `sys_role_permission` (
-  `id`            BIGINT   NOT NULL AUTO_INCREMENT,
-  `role_id`       BIGINT   NOT NULL,
-  `permission_id` BIGINT   NOT NULL,
-  `create_time`   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_role_perm` (`role_id`, `permission_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色权限关联表';
-
--- 1.6 操作日志表
+-- 1.2 操作日志表
 CREATE TABLE `sys_operation_log` (
   `id`          BIGINT        NOT NULL AUTO_INCREMENT,
   `operator_id` BIGINT        NULL     COMMENT '操作人ID',
@@ -104,7 +55,7 @@ CREATE TABLE `sys_operation_log` (
   KEY `idx_create_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='操作日志表';
 
--- 1.7 系统配置表
+-- 1.3 系统配置表
 CREATE TABLE IF NOT EXISTS `sys_config` (
   `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
   `config_key`  VARCHAR(100) NOT NULL COMMENT '配置键',
@@ -239,7 +190,7 @@ CREATE TABLE `purchase_order` (
   `location_id`    BIGINT        NULL     COMMENT '库位ID',
   `total_amount`   DECIMAL(12,2) DEFAULT 0 COMMENT '入库总金额',
   `total_quantity` INT           DEFAULT 0 COMMENT '入库总数量',
-  `status`         TINYINT       DEFAULT 0 COMMENT '状态 0=草稿 1=已入库 2=已取消',
+  `status`         TINYINT       DEFAULT 0 COMMENT '状态 0=草稿 1=已入库 2=已取消 3=已作废',
   `operator_id`    BIGINT        NULL     COMMENT '操作人ID',
   `order_date`     DATE          NOT NULL COMMENT '入库日期',
   `remark`         VARCHAR(500)  NULL     COMMENT '备注',
@@ -286,7 +237,7 @@ CREATE TABLE `sales_order` (
   `total_quantity`   INT           DEFAULT 0 COMMENT '出库总数量',
   `salesman`         VARCHAR(50)   NULL     COMMENT '销售员',
   `external_order_no` VARCHAR(100) NULL     COMMENT '外部订单号',
-  `status`           TINYINT       DEFAULT 0 COMMENT '0=草稿 1=已出库 2=已取消',
+  `status`           TINYINT       DEFAULT 0 COMMENT '0=草稿 1=已出库 2=已取消 3=已作废',
   `operator_id`      BIGINT        NULL     COMMENT '操作人ID',
   `order_date`       DATE          NOT NULL COMMENT '出库日期',
   `remark`           VARCHAR(500)  NULL,
@@ -348,7 +299,7 @@ CREATE TABLE `inventory_log` (
   `warehouse_id` BIGINT        NOT NULL COMMENT '仓库ID',
   `location_id`  BIGINT        NULL     COMMENT '库位ID',
   `batch_no`     VARCHAR(100)  NULL     COMMENT '批次号',
-  `change_type`  VARCHAR(32)   NOT NULL COMMENT '变动类型：PURCHASE_IN / SALES_OUT / ADJUSTMENT_IN / ADJUSTMENT_OUT / STOCKTAKE',
+  `change_type`  VARCHAR(32)   NOT NULL COMMENT '变动类型：PURCHASE_IN/ SALES_OUT/ TRANSFER_IN/ TRANSFER_OUT/ STOCKTAKE/ CANCEL_PURCHASE/ CANCEL_SALES/ CANCEL_TRANSFER/ ADJUSTMENT_IN/ ADJUSTMENT_OUT',
   `change_qty`   INT           NOT NULL COMMENT '变动数量（正=增加，负=减少）',
   `before_qty`   INT           NOT NULL COMMENT '变动前数量',
   `after_qty`    INT           NOT NULL COMMENT '变动后数量',
@@ -378,7 +329,7 @@ CREATE TABLE `stock_take` (
   `take_type`    TINYINT      DEFAULT 0 COMMENT '0=全盘 1=抽盘',
   `total_items`  INT          DEFAULT 0 COMMENT '盘点商品数',
   `diff_items`   INT          DEFAULT 0 COMMENT '差异商品数',
-  `status`       TINYINT      DEFAULT 0 COMMENT '0=盘点中 1=已审核 2=已调整',
+  `status`       TINYINT      DEFAULT 0 COMMENT '0=盘点中 1=已审核 2=已调整 3=已作废',
   `operator_id`  BIGINT       NULL     COMMENT '盘点人ID',
   `approver_id`  BIGINT       NULL     COMMENT '审核人ID',
   `order_date`   DATE         NULL     COMMENT '盘点日期',
@@ -409,7 +360,7 @@ CREATE TABLE `stock_take_item` (
   KEY `idx_product` (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='盘点明细';
 
--- 6.3 库存调整单表
+-- 6.3 库存调整单表（预留，当前盘点调整直接更新 inventory 表）
 CREATE TABLE `stock_adjustment` (
   `id`            BIGINT        NOT NULL AUTO_INCREMENT,
   `order_no`      VARCHAR(64)   NOT NULL COMMENT '调整单号',
@@ -439,7 +390,7 @@ CREATE TABLE `inventory_transfer` (
   `from_warehouse_id` BIGINT      NOT NULL COMMENT '调出仓库ID',
   `to_warehouse_id`   BIGINT      NOT NULL COMMENT '调入仓库ID',
   `total_quantity`   INT          DEFAULT 0 COMMENT '调拨总数量',
-  `status`           TINYINT      DEFAULT 0 COMMENT '0=草稿 1=已完成 2=已取消',
+  `status`           TINYINT      DEFAULT 0 COMMENT '0=草稿 1=已完成 2=已取消 3=已作废',
   `operator_id`      BIGINT       NULL     COMMENT '操作人ID',
   `order_date`       DATE         NULL     COMMENT '调拨日期',
   `remark`           VARCHAR(500) NULL,
@@ -464,24 +415,16 @@ CREATE TABLE `inventory_transfer_item` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='库存调拨明细';
 
 -- =====================================================
--- 8. 字典
+-- 默认数据
 -- =====================================================
 
-CREATE TABLE `sys_dict` (
-  `id`          BIGINT       NOT NULL AUTO_INCREMENT,
-  `dict_type`   VARCHAR(64)  NOT NULL COMMENT '字典类型',
-  `dict_code`   VARCHAR(64)  NOT NULL COMMENT '字典编码',
-  `dict_label`  VARCHAR(200) NOT NULL COMMENT '字典标签',
-  `sort`        INT          DEFAULT 0 COMMENT '排序',
-  `status`      TINYINT      DEFAULT 1,
-  `remark`      VARCHAR(500) NULL,
-  `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_type_code` (`dict_type`, `dict_code`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='字典表';
+-- 默认账号（密码均为 123456，BCrypt 哈希）
+INSERT IGNORE INTO `sys_user` (`id`, `username`, `password`, `real_name`, `position`, `role`, `status`) VALUES
+(1, 'admin',     '$2b$10$fcRVnc5Ku/EIsEnzWU2tA.2V9BevXAK1HzlaoslAufd.f.Vy3LeJu', '系统管理员', NULL,      1, 1),
+(2, 'warehouse', '$2b$10$fcRVnc5Ku/EIsEnzWU2tA.2V9BevXAK1HzlaoslAufd.f.Vy3LeJu', '仓库管理员', '仓管员', 2, 1),
+(3, 'sales',     '$2b$10$fcRVnc5Ku/EIsEnzWU2tA.2V9BevXAK1HzlaoslAufd.f.Vy3LeJu', '销售员',    '销售员', 2, 1);
 
--- 默认配置
+-- 系统配置
 INSERT IGNORE INTO `sys_config` (`config_key`, `config_value`, `remark`) VALUES
 ('purchase_order_prefix', 'PO', '入库单前缀'),
 ('sales_order_prefix', 'SO', '出库单前缀'),

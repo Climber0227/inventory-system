@@ -126,6 +126,7 @@ onMounted(async () => {
         <el-table-column prop="totalQuantity" label="数量" sortable width="80" />
         <el-table-column prop="operatorName" label="操作人" width="100" />
         <el-table-column prop="orderDate" label="调拨日期" width="110" />
+        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
         <el-table-column label="创建时间" width="150">
           <template #default="{ row }">{{ row.createTime ? row.createTime.substring(0, 16) : '-' }}</template>
         </el-table-column>

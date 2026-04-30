@@ -188,7 +188,7 @@ onMounted(() => { fetchDetail().then(() => fetchProducts()) })
             <span v-else>{{ row.diffReason || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="order.status === 0" label="操作" width="70">
+        <el-table-column v-if="order.status === 0" label="操作" width="90">
           <template #default="{ row }">
             <el-button size="small" type="danger" text @click="handleDeleteItem(row.id)">删除</el-button>
           </template>

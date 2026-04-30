@@ -60,6 +60,7 @@ onMounted(fetchData)
         <el-table-column prop="contact" label="联系人" width="120" />
         <el-table-column prop="phone" label="电话" width="140" />
         <el-table-column prop="address" label="地址" min-width="200" />
+        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
         <el-table-column prop="createTime" label="新增时间" width="170" sortable>
           <template #default="{ row }">{{ row.createTime ? row.createTime.substring(0, 16) : '-' }}</template>
         </el-table-column>

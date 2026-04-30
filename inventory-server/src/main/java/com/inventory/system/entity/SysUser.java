@@ -3,7 +3,6 @@ package com.inventory.system.entity;
 import com.baomidou.mybatisplus.annotation.*;
 import lombok.Data;
 import java.time.LocalDateTime;
-import java.util.List;
 
 @Data
 @TableName("sys_user")
@@ -17,6 +16,8 @@ public class SysUser {
     private String email;
     private String avatar;
     private String position;
+    /** 角色 1=管理员 2=员工 */
+    private Integer role;
     private Integer status;
 
     @TableLogic
@@ -27,7 +28,4 @@ public class SysUser {
 
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updateTime;
-
-    @TableField(exist = false)
-    private List<String> roleNames;
 }
