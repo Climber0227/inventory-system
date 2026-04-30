@@ -11,7 +11,7 @@ const query = reactive<PageParams & { username?: string; realName?: string; role
 const dialogVisible = ref(false)
 const pwdDialogVisible = ref(false)
 const pwdForm = reactive<any>({ id: null, username: '', newPassword: '' })
-const form = reactive<any>({ username: '', realName: '', position: '', phone: '', email: '', password: '', roleNames: [] })
+const form = reactive<any>({ username: '', realName: '', position: '', phone: '', email: '', password: '', role: 2 })
 
 async function fetchData() {
   loading.value = true
@@ -22,19 +22,16 @@ async function fetchData() {
 }
 function handleSearch() { query.page = 1; fetchData() }
 function handleReset() { query.username = ''; query.realName = ''; query.roleType = ''; handleSearch() }
-function openCreate() { Object.assign(form, { username: '', realName: '', position: '', phone: '', email: '', password: '', roleNames: 'role_2' }); dialogVisible.value = true }
+function openCreate() { Object.assign(form, { username: '', realName: '', position: '', phone: '', email: '', password: '', role: 2 }); dialogVisible.value = true }
 function openEdit(row: any) {
-  const role = row.roleNames && row.roleNames.length ? row.roleNames[0] : 'role_2'
-  Object.assign(form, { ...row, password: '', roleNames: role })
+  Object.assign(form, { ...row, password: '' })
   dialogVisible.value = true
 }
 async function handleSave() {
   if (!form.username) { ElMessage.warning('请输入用户名'); return }
-  // 权限改为数组格式发送
-  const submitData = { ...form, roleNames: form.roleNames ? [form.roleNames].flat() : [] }
   try {
-    if (form.id) await request.put(`/user/${form.id}`, submitData)
-    else await request.post('/user', submitData)
+    if (form.id) await request.put(`/user/${form.id}`, form)
+    else await request.post('/user', form)
     ElMessage.success('保存成功'); dialogVisible.value = false; fetchData()
   } catch { /* handled */ }
 }
@@ -85,7 +82,7 @@ onMounted(fetchData)
         <el-table-column prop="position" label="职位" width="100" />
         <el-table-column label="权限" width="100">
           <template #default="{ row }">
-            <el-tag v-if="row.roleNames?.includes('role_1')" type="danger" size="small">管理员</el-tag>
+            <el-tag v-if="row.role === 1" type="danger" size="small">管理员</el-tag>
             <el-tag v-else type="success" size="small">员工</el-tag>
           </template>
         </el-table-column>
@@ -113,9 +110,9 @@ onMounted(fetchData)
         <el-form-item label="姓名"><el-input v-model="form.realName" /></el-form-item>
         <el-form-item v-if="!form.id" label="密码" required><el-input v-model="form.password" type="password" /></el-form-item>
         <el-form-item label="权限">
-          <el-radio-group v-model="form.roleNames" :disabled="form.username === 'admin'">
-            <el-radio value="role_1">管理员（全部权限）</el-radio>
-            <el-radio value="role_2">员工（仅操作权限）</el-radio>
+          <el-radio-group v-model="form.role" :disabled="form.username === 'admin'">
+            <el-radio :value="1">管理员（全部权限）</el-radio>
+            <el-radio :value="2">员工（仅操作权限）</el-radio>
           </el-radio-group>
           <div v-if="form.username === 'admin'" style="color:#999;font-size:12px;margin-top:4px;">admin账号权限不可修改</div>
         </el-form-item>

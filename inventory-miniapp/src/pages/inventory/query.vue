@@ -8,7 +8,6 @@ const loading = ref(false)
 const warehouses = ref([])
 const warehouseId = ref(null)
 const keyword = ref('')
-const codeKeyword = ref('')
 let loaded = false
 
 async function fetchData() {
@@ -17,7 +16,6 @@ async function fetchData() {
     const params = { page: 1, size: 50 }
     if (warehouseId.value) params.warehouseId = warehouseId.value
     if (keyword.value) params.productName = keyword.value
-    if (codeKeyword.value) params.productCode = codeKeyword.value
     const res = await request.get('/inventory/page', { params })
     list.value = res.data.records
   } finally { loading.value = false }
@@ -39,27 +37,46 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 
 <template>
   <view class="page">
-    <view class="page-header">
+    <view class="page-bar">
       <text class="page-title">库存查询</text>
       <text class="nav-link" @click="uni.navigateTo({ url: '/pages/inventory/log' })">流水 ›</text>
     </view>
-    <view class="search-bar">
-      <input v-model="keyword" class="search-input" placeholder="搜索商品名称" @confirm="onSearch" />
-      <input v-model="codeKeyword" class="search-input" placeholder="编码/单号" @confirm="onSearch" style="flex:0.8;" />
+    <view class="search-bar" style="display:flex;gap:8px;">
+      <input v-model="keyword" class="search-input" placeholder="搜索商品名称" style="flex:1;" @confirm="onSearch" />
       <picker @change="e => { warehouseId = warehouses[e.detail.value]?.id; fetchData() }" :range="warehouses" range-key="name">
-        <view class="filter-btn">{{ warehouses.find(w => w.id === warehouseId)?.name || '全部仓库' }}</view>
+        <view class="filter-pill">{{ warehouses.find(w => w.id === warehouseId)?.name || '全部仓库' }}</view>
       </picker>
     </view>
 
-    <view v-if="loading" class="loading">加载中...</view>
+    <view v-if="loading">
+      <view class="skeleton" v-for="n in 4" :key="n">
+        <view class="skeleton-line w60"></view>
+        <view class="skeleton-line w80"></view>
+        <view class="skeleton-line w40" style="margin-bottom:0;"></view>
+      </view>
+    </view>
     <view v-else>
-      <view v-for="item in list" :key="item.id" class="card" @click="uni.navigateTo({ url: '/pages/product/list' })">
-        <view class="ir">
-          <view class="ii">
-            <text class="in">{{ item.productName }}</text>
-            <text class="im">{{ item.productCode }} · {{ item.warehouseName }}</text>
+      <view v-for="item in list" :key="item.id" class="card" style="border-left-color:#43a047;">
+        <view style="display:flex;justify-content:space-between;align-items:center;">
+          <view style="flex:1;min-width:0;">
+            <view style="display:flex;align-items:center;gap:6px;">
+              <text style="font-size:16px;">📦</text>
+              <text style="font-weight:600;font-size:15px;color:#1a1a1a;">{{ item.productName }}</text>
+            </view>
+            <text style="font-size:12px;color:#999;margin-top:3px;display:block;">
+              {{ item.productCode }} · {{ item.warehouseName }}
+            </text>
           </view>
-          <text class="iq" :class="{ lw: item.quantity <= 5 }">{{ item.quantity }}</text>
+          <view style="text-align:right;">
+            <text :style="{ fontSize:'24px', fontWeight:'700', color: (item.quantity || 0) <= 5 ? '#c62828' : '#2e7d32' }">
+              {{ item.quantity }}
+            </text>
+            <text style="font-size:11px;color:#aaa;display:block;">{{ item.batchNo || '-' }}</text>
+          </view>
+        </view>
+        <view v-if="item.costPrice" style="margin-top:8px;padding-top:8px;border-top:1px solid #f0f4f0;font-size:12px;color:#aaa;display:flex;justify-content:space-between;">
+          <text>均价 ¥{{ (item.costPrice || 0).toFixed(2) }}</text>
+          <text>金额 ¥{{ ((item.costPrice || 0) * (item.quantity || 0)).toFixed(2) }}</text>
         </view>
       </view>
       <view v-if="list.length === 0" class="empty">暂无库存数据</view>
@@ -68,18 +85,5 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 </template>
 
 <style scoped>
-.page { padding: 12px; background: #f5f7f5; min-height: 100vh; }
-.page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.page-title { font-size: 16px; font-weight: 600; }
-.nav-link { font-size: 13px; color: #2e7d32; }
-.search-bar { display: flex; gap: 8px; margin-bottom: 12px; }
-.search-input { flex: 1; border: 1px solid #dcdfe6; border-radius: 6px; padding: 10px 12px; font-size: 14px; background: #fff; }
-.filter-btn { border: 1px solid #dcdfe6; border-radius: 6px; padding: 8px 12px; font-size: 14px; background: #fff; white-space: nowrap; }
-.card { background: #fff; border-radius: 8px; padding: 12px 16px; margin-bottom: 10px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
-.ir { display: flex; justify-content: space-between; align-items: center; }
-.ii .in { font-weight: 600; font-size: 14px; }
-.ii .im { font-size: 12px; color: #999; margin-top: 2px; }
-.iq { font-size: 20px; font-weight: 700; color: #2e7d32; }
-.iq.lw { color: #c62828; }
-.loading, .empty { text-align: center; color: #999; padding: 40px 0; }
+.filter-pill { background:#fff; border-radius:10px; padding:12px 14px; font-size:13px; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
 </style>

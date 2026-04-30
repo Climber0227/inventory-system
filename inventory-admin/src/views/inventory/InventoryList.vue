@@ -107,7 +107,15 @@ onMounted(() => { fetchWarehouses(); fetchData() })
               <span :style="{ color: row.quantity <= 0 ? '#f56c6c' : '#303133', fontWeight: 600 }">{{ row.quantity }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="成本均价" width="110" align="right">
+          <el-table-column label="成本均价" width="140" align="right">
+            <template #header>
+              <span>
+                成本均价
+                <el-tooltip content="移动加权平均法估算，仅供参考" placement="top">
+                  <span style="cursor:help;color:#999;font-size:12px;">ⓘ</span>
+                </el-tooltip>
+              </span>
+            </template>
             <template #default="{ row }">¥{{ (row.costPrice || 0).toFixed(2) }}</template>
           </el-table-column>
           <el-table-column label="库存金额" sortable width="130" align="right">

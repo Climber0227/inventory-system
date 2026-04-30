@@ -324,6 +324,10 @@ public class PurchaseOrderService {
                             b.setCostPrice(avgPrice);
                             inventoryMapper.updateById(b);
                         }
+                    } else {
+                        // 库存归零时，成本价清零
+                        inv.setCostPrice(BigDecimal.ZERO);
+                        inventoryMapper.updateById(inv);
                     }
 
                     InventoryLog log = new InventoryLog();

@@ -14,7 +14,7 @@ vi.mock('vue-router', () => ({
 vi.mock('../api/request', () => ({
   default: {
     get: vi.fn(() => Promise.resolve({ data: { data: [] } })),
-    post: vi.fn(() => Promise.resolve({ data: { data: { token: 'mock-token', roles: ['role_1'], isAdmin: true } } })),
+    post: vi.fn(() => Promise.resolve({ data: { data: { token: 'mock-token', role: 1, isAdmin: true } } })),
   },
 }))
 

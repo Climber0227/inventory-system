@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, reactive, watch } from 'vue'
+import { ref, onMounted, reactive, watch, computed } from 'vue'
 import request from '../../api/request'
 import type { Warehouse, Customer, Product } from '../../types/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -16,6 +16,13 @@ const products = ref<Product[]>([])
 const batchInventory = ref<Record<number, Array<{batchNo: string; quantity: number}>>>({})
 const productStock = ref<Record<number, number>>({})
 const warehouseStock = ref<Record<number, number>>({})
+
+const selectedCustomer = computed(() =>
+  customers.value.find(c => c.id === form.customerId)
+)
+const selectedWarehouse = computed(() =>
+  warehouses.value.find(w => w.id === form.warehouseId)
+)
 
 const form = reactive({
   customerId: undefined as number | undefined,
@@ -193,16 +200,30 @@ onMounted(async () => {
         <el-row :gutter="24">
           <el-col :span="8">
             <el-form-item label="客户" required>
-              <el-select v-model="form.customerId" filterable style="width:100%">
-                <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
-              </el-select>
+              <div style="display:flex;gap:8px;width:100%;">
+                <el-select v-model="form.customerId" filterable style="flex:1" placeholder="选择客户">
+                  <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
+                </el-select>
+                <div v-if="form.customerId" style="display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:13px;color:#666;line-height:32px;">
+                  <span>{{ selectedCustomer?.contact || '-' }}</span>
+                  <span style="color:#999;">|</span>
+                  <span>{{ selectedCustomer?.phone || '-' }}</span>
+                </div>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :span="8">
             <el-form-item label="仓库" required>
-              <el-select v-model="form.warehouseId" style="width:100%">
-                <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-              </el-select>
+              <div style="display:flex;gap:8px;width:100%;">
+                <el-select v-model="form.warehouseId" style="flex:1">
+                  <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+                </el-select>
+                <div v-if="form.warehouseId" style="display:flex;align-items:center;gap:8px;white-space:nowrap;font-size:13px;color:#666;line-height:32px;">
+                  <span>{{ selectedWarehouse?.contact || '-' }}</span>
+                  <span style="color:#999;">|</span>
+                  <span>{{ selectedWarehouse?.phone || '-' }}</span>
+                </div>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -229,6 +250,7 @@ onMounted(async () => {
         <h3>商品明细</h3>
         <el-button type="primary" size="small" @click="addItem">+ 添加商品</el-button>
       </div>
+      <div style="color:#f56c6c;font-size:13px;margin-bottom:12px;">已自动填充销售价，支持手动修改，修改后请务必核实单价</div>
       <el-table :data="form.items" border stripe>
         <el-table-column label="商品" min-width="160">
           <template #default="{ $index }">
@@ -244,17 +266,17 @@ onMounted(async () => {
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="数量" width="140">
+        <el-table-column label="数量" width="180">
           <template #default="{ $index }">
             <el-input-number v-model="form.items[$index].quantity" :min="1" style="width:100%" @change="calcAmount($index)" />
           </template>
         </el-table-column>
-        <el-table-column label="售价" width="140">
+        <el-table-column label="售价" width="180">
           <template #default="{ $index }">
             <el-input-number v-model="form.items[$index].unitPrice" :precision="2" :min="0" style="width:100%" @change="calcAmount($index)" />
           </template>
         </el-table-column>
-        <el-table-column label="金额" width="120">
+        <el-table-column label="金额" width="180">
           <template #default="{ $index }">¥{{ (form.items[$index].amount ?? 0).toFixed(2) }}</template>
         </el-table-column>
         <el-table-column label="批次/库存" width="200">

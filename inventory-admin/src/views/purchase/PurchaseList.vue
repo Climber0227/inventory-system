@@ -124,6 +124,7 @@ onMounted(() => { fetchData(); fetchSuppliers(); fetchWarehouses() })
         </el-table-column>
         <el-table-column prop="operatorName" label="操作人" width="100" />
         <el-table-column prop="orderDate" label="入库日期" sortable width="120" />
+        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
         <el-table-column prop="createTime" label="创建时间" sortable width="160">
           <template #default="{ row }">{{ row.createTime ? row.createTime.substring(0, 16) : '-' }}</template>
         </el-table-column>
@@ -137,6 +138,7 @@ onMounted(() => { fetchData(); fetchSuppliers(); fetchWarehouses() })
             <el-button size="small" @click="router.push(`/purchase/${row.id}`)">详情</el-button>
             <el-button v-if="row.status === 0" size="small" @click="router.push(`/purchase/create?edit=${row.id}`)">编辑</el-button>
             <el-button v-if="row.status === 0" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
+            <el-button v-if="row.status === 1" size="small" type="warning" @click="handleCancel(row)">取消入库</el-button>
             <el-button v-if="userStore.isAdmin && (row.status === 0 || row.status === 2)" size="small" type="danger" @click="handleDelete(row)">作废</el-button>
           </template>
         </el-table-column>
