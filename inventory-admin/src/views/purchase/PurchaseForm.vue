@@ -307,7 +307,7 @@ onMounted(async () => {
     <div style="display:flex;gap:12px;justify-content:flex-end">
       <el-button @click="router.push('/purchase')">返回</el-button>
       <el-button :loading="submitting" @click="handleSave">保存草稿</el-button>
-      <el-button type="primary" :loading="submitting" @click="handleSubmit">确认入库</el-button>
+      <el-button type="primary" :loading="submitting" @click="handleSubmit">提交审批</el-button>
     </div>
   </div>
 </template>

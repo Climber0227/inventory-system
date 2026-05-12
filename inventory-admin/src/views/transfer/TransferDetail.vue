@@ -30,9 +30,9 @@ async function fetchDetail() {
 }
 
 async function handleSubmit() {
-  try { await ElMessageBox.confirm('确认执行调拨？调拨后库存将立即变更。', '确认调拨', { type: 'warning' }) } catch { return }
+  try { await ElMessageBox.confirm('提交后进入审批状态，请联系管理员审批通过。', '提交审批', { type: 'info' }) } catch { return }
   await request.put(`/transfer/${route.params.id}/submit`)
-  ElMessage.success('已调拨'); fetchDetail()
+  ElMessage.success('已提交审批'); fetchDetail()
 }
 
 async function handleCancel() {
@@ -71,7 +71,7 @@ onMounted(fetchDetail)
       <h2>调拨单详情</h2>
       <div>
         <el-button @click="router.push('/transfer')">返回列表</el-button>
-        <el-button v-if="order?.status === 0" type="primary" @click="handleSubmit">确认调拨</el-button>
+        <el-button v-if="order?.status === 0" type="primary" @click="handleSubmit">提交审批</el-button>
         <el-button v-if="userStore.isAdmin && order?.status === 4" type="success" @click="handleApprove">审核通过</el-button>
         <el-button v-if="userStore.isAdmin && order?.status === 4" type="warning" @click="handleReject">驳回</el-button>
         <el-button v-if="order?.status === 0 || order?.status === 4" type="danger" @click="handleCancel">取消调拨</el-button>
