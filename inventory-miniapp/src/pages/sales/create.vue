@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
