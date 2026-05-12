@@ -1,14 +1,17 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import request from '@/api/request'
 
 const list = ref([])
 const loading = ref(false)
-const warehouses = ref([])
+const warehouseTree = ref([])
 const warehouseId = ref(null)
 const keyword = ref('')
-let loaded = false
+// 级联仓库选择
+const whCascade = ref([])
+const whOptions = ref([])
+const showWhPicker = ref(false)
 
 async function fetchData() {
   loading.value = true
@@ -21,15 +24,41 @@ async function fetchData() {
   } finally { loading.value = false }
 }
 
-async function fetchWarehouses() {
-  const res = await request.get('/warehouse/list')
-  warehouses.value = res.data
+async function fetchWarehouseTree() {
+  const res = await request.get('/warehouse/tree')
+  warehouseTree.value = res.data || []
 }
+
+// 级联
+function openWarehousePicker() { whCascade.value = []; whOptions.value = warehouseTree.value || []; showWhPicker.value = true }
+function selectWhLevel(item) {
+  whCascade.value.push(item)
+  if (item.children?.length) { whOptions.value = item.children }
+  else { warehouseId.value = item.id; showWhPicker.value = false; fetchData() }
+}
+function goBackTo(index) {
+  whCascade.value = whCascade.value.slice(0, index + 1)
+  const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
+  whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
+}
+const whLabel = computed(() => {
+  if (!warehouseId.value) return '全部仓库'
+  function find(nodes, id) { for (const n of nodes) { if (n.id === id) return n.name; if (n.children) { const r = find(n.children, id); if (r) return r } } return null }
+  return find(warehouseTree.value, warehouseId.value) || '全部仓库'
+})
+
+// 构建仓库路径映射
+const pathMap = computed(() => {
+  const m = {}
+  function walk(nodes, prefix) { for (const n of nodes) { const p = prefix ? prefix + ' > ' + n.name : n.name; m[n.id] = p; if (n.children) walk(n.children, p) } }
+  walk(warehouseTree.value, '')
+  return m
+})
 
 function onSearch() { fetchData() }
 
 onShow(() => {
-  if (!loaded) { loaded = true; fetchWarehouses() }
+  if (!warehouseTree.value.length) fetchWarehouseTree()
   fetchData()
 })
 onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
@@ -43,9 +72,28 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
     </view>
     <view class="search-bar" style="display:flex;gap:8px;">
       <input v-model="keyword" class="search-input" placeholder="搜索商品名称" style="flex:1;" @confirm="onSearch" />
-      <picker @change="e => { warehouseId = warehouses[e.detail.value]?.id; fetchData() }" :range="warehouses" range-key="name">
-        <view class="filter-pill">{{ warehouses.find(w => w.id === warehouseId)?.name || '全部仓库' }}</view>
-      </picker>
+      <view class="filter-pill picker-select" @click="openWarehousePicker">{{ whLabel }}</view>
+      <!-- 级联仓库选择 -->
+      <view v-if="showWhPicker" class="picker-overlay" @click="showWhPicker = false">
+        <view class="picker-modal" @click.stop>
+          <view class="picker-header">
+            <text class="picker-cancel" @click="showWhPicker = false">取消</text>
+            <text style="font-weight:bold;">选择仓库</text>
+            <view style="width:40px;"></view>
+          </view>
+          <view v-if="whCascade.length" class="wh-breadcrumb">
+            <text v-for="(c, i) in whCascade" :key="i" class="wh-crumb" @click="goBackTo(i)">{{ c.name }}<text v-if="i < whCascade.length - 1"> ›</text></text>
+          </view>
+          <scroll-view scroll-y class="picker-list">
+            <view v-for="item in whOptions" :key="item.id" class="picker-item" @click="selectWhLevel(item)">
+              <text :style="{ fontWeight: item.children?.length ? 'bold' : 'normal' }">{{ item.name }}</text>
+              <text style="font-size:11px;color:#999;margin-left:4px;">{{ item.level }}级</text>
+              <text v-if="item.children?.length" style="margin-left:auto;color:#ccc;">›</text>
+            </view>
+            <view v-if="!whOptions.length" style="text-align:center;padding:30px 0;color:#999;">无下级仓库</view>
+          </scroll-view>
+        </view>
+      </view>
     </view>
 
     <view v-if="loading">
@@ -63,8 +111,8 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
               <text style="font-size:16px;">📦</text>
               <text style="font-weight:600;font-size:15px;color:#1a1a1a;">{{ item.productName }}</text>
             </view>
-            <text style="font-size:12px;color:#999;margin-top:3px;display:block;">
-              {{ item.productCode }} · {{ item.warehouseName }}
+            <text style="font-size:11px;color:#999;margin-top:3px;display:block;">
+              {{ item.productCode }} · {{ pathMap[item.warehouseId] || item.warehouseName }}
             </text>
           </view>
           <view style="text-align:right;">
@@ -86,4 +134,13 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 
 <style scoped>
 .filter-pill { background:#fff; border-radius:10px; padding:12px 14px; font-size:13px; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+.picker-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; display: flex; align-items: flex-end; }
+.picker-modal { background: #fff; border-radius: 16px 16px 0 0; width: 100%; max-height: 70vh; display: flex; flex-direction: column; }
+.picker-header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #eee; }
+.picker-cancel { color: #666; font-size: 14px; }
+.wh-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 16px; background: #f5f7fa; font-size: 13px; }
+.wh-crumb { color: #2e7d32; }
+.picker-list { padding: 0 16px 20px; max-height: 55vh; overflow-y: auto; }
+.picker-item { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid #f5f5f5; }
+.picker-item:active { background: #f5f7f5; }
 </style>
