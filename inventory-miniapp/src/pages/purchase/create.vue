@@ -4,7 +4,6 @@ import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
 
 const suppliers = ref([])
-const warehouses = ref([])
 const products = ref([])
 const warehouseStock = ref({})
 const submitting = ref(false)
@@ -14,6 +13,13 @@ const searchKeyword = ref('')
 const remarkFocused = ref(false)
 const searchFocused = ref(false)
 
+// 级联仓库选择
+const warehouseTree = ref<any[]>([])
+const whCascade = ref<any[]>([])     // 当前级联路径
+const whStep = ref(0)                 // 0=未选, 1=选1级, 2=选2级...
+const whOptions = ref<any[]>([])      // 当前可选项
+const showWhPicker = ref(false)
+
 const form = ref({
   supplierId: null, warehouseId: null,
   orderDate: new Date().toISOString().slice(0, 10),
@@ -21,22 +27,68 @@ const form = ref({
 })
 
 onMounted(async () => {
-  const [sRes, wRes, pRes] = await Promise.all([
-    request.get('/supplier/list'), request.get('/warehouse/list'), request.get('/product/list'),
+  const [sRes, tRes, pRes] = await Promise.all([
+    request.get('/supplier/list'), request.get('/warehouse/tree'), request.get('/product/list'),
   ])
-  suppliers.value = sRes.data; warehouses.value = wRes.data; products.value = pRes.data
+  suppliers.value = sRes.data; warehouseTree.value = tRes.data || []; products.value = pRes.data
 })
 
-watch(() => form.value.warehouseId, async (id) => {
+// 打开仓库选择器
+function openWarehousePicker() {
+  whCascade.value = []
+  whStep.value = 1
+  whOptions.value = warehouseTree.value || []
+  showWhPicker.value = true
+}
+function selectWhLevel(item: any) {
+  whCascade.value.push(item)
+  if (item.children?.length) {
+    whStep.value++
+    whOptions.value = item.children
+  } else {
+    // 叶子节点，确认选择
+    form.value.warehouseId = item.id
+    showWhPicker.value = false
+    // 加载库存
+    loadStock(item.id)
+  }
+}
+function goBackTo(index: number) {
+  whCascade.value = whCascade.value.slice(0, index + 1)
+  const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
+  whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
+  whStep.value = index + 2
+}
+function goBackWhLevel() {
+  whCascade.value.pop()
+  const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
+  whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
+  whStep.value--
+}
+
+// 仓库路径显示
+const whDisplay = computed(() => {
+  if (!form.value.warehouseId) return '请选择'
+  // 从树中递归查找仓库名称
+  function find(nodes: any[], id: number): string | null {
+    for (const n of nodes) {
+      if (n.id === id) return n.name
+      if (n.children) { const r = find(n.children, id); if (r) return r }
+    }
+    return null
+  }
+  return find(warehouseTree.value, form.value.warehouseId) || '仓库' + form.value.warehouseId
+})
+
+async function loadStock(id: number) {
   warehouseStock.value = {}
-  if (!id) return
   try {
     const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
-    const stock = {}
+    const stock: Record<number, number> = {}
     for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
     warehouseStock.value = stock
   } catch { /* ignore */ }
-})
+}
 
 const sortedProducts = computed(() => {
   const withStock = [], without = []
@@ -99,7 +151,7 @@ async function handleSubmit() {
   try {
     const res = await request.post('/purchase-order', form.value)
     await request.put(`/purchase-order/${res.data}/submit`)
-    uni.showToast({ title: '入库成功', icon: 'success' })
+    uni.showToast({ title: '已提交审批', icon: 'success' })
     setTimeout(() => uni.switchTab({ url: '/pages/purchase/list' }), 300)
   } finally { submitting.value = false }
 }
@@ -116,9 +168,34 @@ async function handleSubmit() {
       </view>
       <view class="form-item">
         <text class="label">仓库 *</text>
-        <picker @change="e => form.warehouseId = warehouses[e.detail.value]?.id" :range="warehouses" range-key="name">
-          <view class="picker">{{ warehouses.find(w => w.id === form.warehouseId)?.name || '请选择' }}</view>
-        </picker>
+        <view class="picker picker-select" @click="openWarehousePicker">
+          <text>{{ whDisplay }}</text>
+          <text v-if="!form.warehouseId" style="color:#bbb;">请选择</text>
+        </view>
+
+        <!-- 级联仓库选择弹窗 -->
+        <view v-if="showWhPicker" class="picker-overlay" @click="showWhPicker = false">
+          <view class="picker-modal" @click.stop>
+            <view class="picker-header">
+              <text class="picker-cancel" @click="showWhPicker = false">取消</text>
+              <text class="picker-title" style="font-weight:bold;">选择仓库</text>
+              <view style="width:40px;"></view>
+            </view>
+            <view v-if="whCascade.length" class="wh-breadcrumb">
+              <text v-for="(c, i) in whCascade" :key="i" class="wh-crumb" @click="goBackTo(i)">
+                {{ c.name }}<text v-if="i < whCascade.length - 1" style="margin:0 4px;">›</text>
+              </text>
+            </view>
+            <scroll-view scroll-y class="picker-list">
+              <view v-for="item in whOptions" :key="item.id" class="picker-item" @click="selectWhLevel(item)">
+                <text :style="{ fontWeight: item.children?.length ? 'bold' : 'normal' }">{{ item.name }}</text>
+                <text style="font-size:11px;color:#999;">{{ item.level }}级</text>
+                <text v-if="item.children?.length" style="margin-left:auto;color:#ccc;">›</text>
+              </view>
+              <view v-if="!whOptions.length" style="text-align:center;padding:30px 0;color:#999;">无下级仓库</view>
+            </scroll-view>
+          </view>
+        </view>
       </view>
       <view class="form-item">
         <text class="label">备注</text>
@@ -210,6 +287,11 @@ async function handleSubmit() {
 .input-sm { border: 1px solid #dcdfe6; border-radius: 4px; padding: 10px 12px; }
 .input.focused { border-color: #2e7d32; border-width: 1.5px; }
 .picker-search .search-input.focused { border-color: #2e7d32; border-width: 1.5px; }
+.picker-header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #eee; }
+.picker-cancel { color: #666; font-size: 14px; }
+.picker-title { font-size: 16px; }
+.wh-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 16px; background: #f5f7fa; font-size: 13px; }
+.wh-crumb { color: #2e7d32; }
 .amount { font-size: 14px; color: #f56c6c; font-weight: bold; }
 .submit-btn { position: fixed; bottom: 0; left: 0; right: 0; margin: 16px; background: #2e7d32; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 16px; }
 .ic-row { display: flex; align-items: center; gap: 8px; }

@@ -4,7 +4,6 @@ import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
 
 const customers = ref([])
-const warehouses = ref([])
 const products = ref([])
 const warehouseStock = ref({})
 const submitting = ref(false)
@@ -14,19 +13,54 @@ const searchKeyword = ref('')
 const salesmanFocused = ref(false)
 const searchFocused = ref(false)
 
+// 级联仓库选择
+const warehouseTree = ref<any[]>([])
+const whCascade = ref<any[]>([])
+const whOptions = ref<any[]>([])
+const showWhPicker = ref(false)
+
 const form = ref({
   customerId: null, warehouseId: null, salesman: '',
   orderDate: new Date().toISOString().slice(0, 10), remark: '', items: [],
 })
 
 onMounted(async () => {
-  const [cRes, wRes, pRes] = await Promise.all([
-    request.get('/customer/list'), request.get('/warehouse/list'), request.get('/product/list'),
+  const [cRes, tRes, pRes] = await Promise.all([
+    request.get('/customer/list'), request.get('/warehouse/tree'), request.get('/product/list'),
   ])
-  customers.value = cRes.data; warehouses.value = wRes.data; products.value = pRes.data
+  customers.value = cRes.data; warehouseTree.value = tRes.data || []; products.value = pRes.data
 })
 
+// 仓库级联
+function openWarehousePicker() { whCascade.value = []; whOptions.value = warehouseTree.value || []; showWhPicker.value = true }
+function selectWhLevel(item: any) {
+  whCascade.value.push(item)
+  if (item.children?.length) { whOptions.value = item.children }
+  else { form.value.warehouseId = item.id; showWhPicker.value = false; loadStock(item.id) }
+}
+function goBackTo(index: number) {
+  whCascade.value = whCascade.value.slice(0, index + 1)
+  const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
+  whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
+}
+const whDisplay = computed(() => {
+  if (!form.value.warehouseId) return '请选择'
+  function find(nodes: any[], id: number): string | null { for (const n of nodes) { if (n.id === id) return n.name; if (n.children) { const r = find(n.children, id); if (r) return r } } return null }
+  return find(warehouseTree.value, form.value.warehouseId) || '仓库' + form.value.warehouseId
+})
+
+async function loadStock(id: number) {
+  warehouseStock.value = {}
+  try {
+    const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
+    const stock: Record<number, number> = {}
+    for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
+    warehouseStock.value = stock
+  } catch { /* ignore */ }
+}
+
 watch(() => form.value.warehouseId, async (id) => {
+  if (!id) return
   warehouseStock.value = {}
   if (!id) return
   try {
@@ -97,7 +131,7 @@ async function handleSubmit() {
   try {
     const res = await request.post('/sales-order', form.value)
     await request.put(`/sales-order/${res.data}/submit`)
-    uni.showToast({ title: '出库成功', icon: 'success' })
+    uni.showToast({ title: '已提交审批', icon: 'success' })
     setTimeout(() => uni.switchTab({ url: '/pages/sales/list' }), 300)
   } finally { submitting.value = false }
 }
@@ -114,9 +148,31 @@ async function handleSubmit() {
       </view>
       <view class="form-item">
         <text class="label">仓库 *</text>
-        <picker @change="e => form.warehouseId = warehouses[e.detail.value]?.id" :range="warehouses" range-key="name">
-          <view class="picker">{{ warehouses.find(w => w.id === form.warehouseId)?.name || '请选择' }}</view>
-        </picker>
+        <view class="picker picker-select" @click="openWarehousePicker">
+          <text>{{ whDisplay }}</text>
+          <text v-if="!form.warehouseId" style="color:#bbb;">请选择</text>
+        </view>
+        <!-- 级联仓库选择 -->
+        <view v-if="showWhPicker" class="picker-overlay" @click="showWhPicker = false">
+          <view class="picker-modal" @click.stop>
+            <view class="picker-header">
+              <text class="picker-cancel" @click="showWhPicker = false">取消</text>
+              <text style="font-weight:bold;">选择仓库</text>
+              <view style="width:40px;"></view>
+            </view>
+            <view v-if="whCascade.length" class="wh-breadcrumb">
+              <text v-for="(c, i) in whCascade" :key="i" class="wh-crumb" @click="goBackTo(i)">{{ c.name }}<text v-if="i < whCascade.length - 1"> ›</text></text>
+            </view>
+            <scroll-view scroll-y class="picker-list">
+              <view v-for="item in whOptions" :key="item.id" class="picker-item" @click="selectWhLevel(item)">
+                <text :style="{ fontWeight: item.children?.length ? 'bold' : 'normal' }">{{ item.name }}</text>
+                <text style="font-size:11px;color:#999;">{{ item.level }}级</text>
+                <text v-if="item.children?.length" style="margin-left:auto;color:#ccc;">›</text>
+              </view>
+              <view v-if="!whOptions.length" style="text-align:center;padding:30px 0;color:#999;">无下级仓库</view>
+            </scroll-view>
+          </view>
+        </view>
       </view>
       <view class="form-item">
         <text class="label">销售员</text>
@@ -223,4 +279,8 @@ async function handleSubmit() {
 .picker-item:active { background: #f5f7f5; }
 .stock-badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: #f5f5f5; color: #999; white-space: nowrap; flex-shrink: 0; }
 .stock-badge.has-stock { background: #e8f5e9; color: #2e7d32; }
+.picker-header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #eee; }
+.picker-cancel { color: #666; font-size: 14px; }
+.wh-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 16px; background: #f5f7fa; font-size: 13px; }
+.wh-crumb { color: #2e7d32; }
 </style>
