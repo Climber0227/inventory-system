@@ -3,7 +3,6 @@ import { ref, onMounted, computed, watch } from 'vue'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
 
-const warehouses = ref([])
 const products = ref([])
 const fromStock = ref({})
 const stockLoaded = ref(false)
@@ -13,29 +12,63 @@ const pickerIndex = ref(0)
 const searchKeyword = ref('')
 const searchFocused = ref(false)
 
+// 级联仓库选择
+const warehouseTree = ref<any[]>([])
+const whTarget = ref<'from' | 'to'>('from')
+const whCascade = ref<any[]>([])
+const whOptions = ref<any[]>([])
+const showWhPicker = ref(false)
+
 const form = ref({
   fromWarehouseId: null, toWarehouseId: null, remark: '', items: [],
 })
 
 onMounted(async () => {
-  const [wRes, pRes] = await Promise.all([
-    request.get('/warehouse/list'), request.get('/product/list'),
+  const [tRes, pRes] = await Promise.all([
+    request.get('/warehouse/tree'), request.get('/product/list'),
   ])
-  warehouses.value = wRes.data; products.value = pRes.data
+  warehouseTree.value = tRes.data || []; products.value = pRes.data
 })
 
-watch(() => form.value.fromWarehouseId, async (id) => {
+// 仓库级联
+function openWarehousePicker(target: 'from' | 'to') {
+  whTarget.value = target
+  whCascade.value = []
+  whOptions.value = warehouseTree.value || []
+  showWhPicker.value = true
+}
+function selectWhLevel(item: any) {
+  whCascade.value.push(item)
+  if (item.children?.length) { whOptions.value = item.children }
+  else {
+    if (whTarget.value === 'from') form.value.fromWarehouseId = item.id
+    else form.value.toWarehouseId = item.id
+    showWhPicker.value = false
+    if (whTarget.value === 'from') loadFromStock(item.id)
+  }
+}
+function goBackTo(index: number) {
+  whCascade.value = whCascade.value.slice(0, index + 1)
+  const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
+  whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
+}
+function whDisplay(id: number | null): string {
+  if (!id) return '请选择'
+  function find(nodes: any[], targetId: number): string | null { for (const n of nodes) { if (n.id === targetId) return n.name; if (n.children) { const r = find(n.children, targetId); if (r) return r } } return null }
+  return find(warehouseTree.value, id) || ''
+}
+
+async function loadFromStock(id: number) {
   stockLoaded.value = false
   fromStock.value = {}
-  if (!id) return
   try {
     const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
-    const stock = {}
+    const stock: Record<number, number> = {}
     for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
     fromStock.value = stock
     stockLoaded.value = true
   } catch { stockLoaded.value = true }
-})
+}
 
 const sortedProducts = computed(() => {
   const withStock = [], without = []
@@ -112,7 +145,7 @@ async function handleSubmit() {
     const id = res.data
     try {
       await request.put(`/transfer/${id}/submit`)
-      uni.showToast({ title: '调拨成功', icon: 'success' })
+      uni.showToast({ title: '已提交审批', icon: 'success' })
       setTimeout(() => uni.redirectTo({ url: '/pages/transfer/list' }), 300)
     } catch {
       // submit失败，作废草稿
@@ -128,15 +161,36 @@ async function handleSubmit() {
     <view class="section">
       <view class="form-item">
         <text class="label">调出仓库 *</text>
-        <picker @change="e => form.fromWarehouseId = warehouses[e.detail.value]?.id" :range="warehouses" range-key="name">
-          <view class="picker">{{ warehouses.find(w => w.id === form.fromWarehouseId)?.name || '请选择' }}</view>
-        </picker>
+        <view class="picker picker-select" @click="openWarehousePicker('from')">
+          <text>{{ whDisplay(form.fromWarehouseId) || '请选择' }}</text>
+        </view>
       </view>
       <view class="form-item">
         <text class="label">调入仓库 *</text>
-        <picker @change="e => form.toWarehouseId = warehouses[e.detail.value]?.id" :range="warehouses" range-key="name">
-          <view class="picker">{{ warehouses.find(w => w.id === form.toWarehouseId)?.name || '请选择' }}</view>
-        </picker>
+        <view class="picker picker-select" @click="openWarehousePicker('to')">
+          <text>{{ whDisplay(form.toWarehouseId) || '请选择' }}</text>
+        </view>
+      </view>
+      <!-- 级联仓库选择弹窗 -->
+      <view v-if="showWhPicker" class="picker-overlay" @click="showWhPicker = false">
+        <view class="picker-modal" @click.stop>
+          <view class="picker-header">
+            <text class="picker-cancel" @click="showWhPicker = false">取消</text>
+            <text style="font-weight:bold;">选择仓库</text>
+            <view style="width:40px;"></view>
+          </view>
+          <view v-if="whCascade.length" class="wh-breadcrumb">
+            <text v-for="(c, i) in whCascade" :key="i" class="wh-crumb" @click="goBackTo(i)">{{ c.name }}<text v-if="i < whCascade.length - 1"> ›</text></text>
+          </view>
+          <scroll-view scroll-y class="picker-list">
+            <view v-for="item in whOptions" :key="item.id" class="picker-item" @click="selectWhLevel(item)">
+              <text :style="{ fontWeight: item.children?.length ? 'bold' : 'normal' }">{{ item.name }}</text>
+              <text style="font-size:11px;color:#999;">{{ item.level }}级</text>
+              <text v-if="item.children?.length" style="margin-left:auto;color:#ccc;">›</text>
+            </view>
+            <view v-if="!whOptions.length" style="text-align:center;padding:30px 0;color:#999;">无下级仓库</view>
+          </scroll-view>
+        </view>
       </view>
     </view>
 
@@ -215,6 +269,10 @@ async function handleSubmit() {
 .scan-btn { width: 40px; height: 40px; background: #e8f5e9; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
 .picker-select:active { background: #e8f5e9; }
 .submit-btn { position: fixed; bottom: 0; left: 0; right: 0; margin: 16px; background: #2e7d32; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 16px; }
+.picker-header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #eee; }
+.picker-cancel { color: #666; font-size: 14px; }
+.wh-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 16px; background: #f5f7fa; font-size: 13px; }
+.wh-crumb { color: #2e7d32; }
 .picker-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; display: flex; align-items: flex-end; }
 .picker-modal { background: #fff; border-radius: 16px 16px 0 0; width: 100%; max-height: 70vh; display: flex; flex-direction: column; }
 .picker-search { padding: 16px 16px 8px; }
