@@ -121,6 +121,8 @@ public class StockTakeService {
                         default: vo.setStatus("未知"); break;
                     }
                 }
+                if (s.getOrderDate() != null) vo.setOrderDate(s.getOrderDate());
+                if (s.getOperatorName() != null) vo.setOperatorName(s.getOperatorName());
                 vo.setProductName(item.getProductName());
                 vo.setProductCode(item.getProductCode());
                 vo.setBatchNo(item.getBatchNo());
@@ -136,6 +138,8 @@ public class StockTakeService {
                 vo.setWarehouseName(s.getWarehouseName());
                 vo.setTakeType(s.getTakeType() != null && s.getTakeType() == 0 ? "全盘" : "抽盘");
                 vo.setStatus(s.getStatus() != null ? (s.getStatus() == 0 ? "盘点中" : s.getStatus() == 1 ? "已审核" : "已调整") : "未知");
+                if (s.getOrderDate() != null) vo.setOrderDate(s.getOrderDate());
+                if (s.getOperatorName() != null) vo.setOperatorName(s.getOperatorName());
                 result.add(vo);
             }
         }
