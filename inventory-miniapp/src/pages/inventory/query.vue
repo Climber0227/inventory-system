@@ -83,6 +83,7 @@ async function fetchWarehouseTree() {
 }
 
 function onSearch() { fetchData() }
+function handleReset() { keyword.value = ''; warehouseId.value = null; expanded.clear(); fetchData() }
 
 // 级联
 function openWarehousePicker() { whCascade.value = []; whOptions.value = warehouseTree.value || []; showWhPicker.value = true }
@@ -122,8 +123,12 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
       <text class="page-title">库存查询</text>
       <text class="nav-link" @click="uni.navigateTo({ url: '/pages/inventory/log' })">流水 ›</text>
     </view>
-    <view class="search-bar" style="display:flex;gap:8px;">
-      <input v-model="keyword" class="search-input" placeholder="商品名称/编码" style="flex:1;" @confirm="onSearch" />
+    <view class="search-bar" style="display:flex;gap:6px;flex-wrap:wrap;">
+      <view style="display:flex;gap:6px;flex:1;min-width:200px;">
+        <input v-model="keyword" class="search-input" placeholder="商品名称/编码" style="flex:1;" @confirm="onSearch" />
+        <view class="btn-search" @click="onSearch">搜索</view>
+        <view class="btn-reset" @click="handleReset">重置</view>
+      </view>
       <view class="filter-pill picker-select" @click="openWarehousePicker">{{ whLabel }}</view>
       <view v-if="showWhPicker" class="picker-overlay" @click="showWhPicker = false">
         <view class="picker-modal" @click.stop>
@@ -196,6 +201,8 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 .nav-link { color: #2e7d32; font-size: 14px; }
 .search-input { border: 1px solid #dcdfe6; border-radius: 10px; padding: 12px 14px; font-size: 13px; background: #fff; }
 .filter-pill { background: #fff; border-radius: 10px; padding: 12px 14px; font-size: 13px; white-space: nowrap; box-shadow: 0 1px 4px rgba(0,0,0,0.04); }
+.btn-search { background: #2e7d32; color: #fff; border-radius: 10px; padding: 12px 16px; font-size: 13px; white-space: nowrap; }
+.btn-reset { background: #f5f5f5; color: #666; border-radius: 10px; padding: 12px 16px; font-size: 13px; white-space: nowrap; }
 .loading, .empty { text-align: center; color: #999; padding: 40px 0; }
 .tree-wrap { background: #fff; border-radius: 8px; overflow: hidden; }
 .tree-row { border-bottom: 1px solid #f5f5f5; }
