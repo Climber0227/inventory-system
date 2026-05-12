@@ -166,6 +166,8 @@ public class WarehouseService {
     public void save(Warehouse warehouse) {
         if (warehouse.getLevel() == null || warehouse.getLevel() == 4) {
             warehouse.setCode(generateWarehouseCode());
+        } else {
+            warehouse.setCode(null); // 虚拟节点无需编码，设为 null 避免唯一键冲突
         }
         // 校验层级连续性：子级层级 = 父级层级 + 1
         if (warehouse.getParentId() != null) {
