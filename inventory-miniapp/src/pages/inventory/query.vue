@@ -108,9 +108,13 @@ async function fetchData() {
   try {
     const params = { page: 1, size: 999 }
     if (warehouseId.value) params.warehouseId = warehouseId.value
-    if (keyword.value.trim()) { params.productName = keyword.value.trim(); searched.value = true }
+    const kw = keyword.value.trim()
+    if (kw) params.productName = kw
     const res = await request.get('/inventory/page', { params })
     allList.value = res.data.records || []
+    if (kw) searched.value = true
+  } catch (e) {
+    allList.value = []
   } finally { loading.value = false }
 }
 
