@@ -88,6 +88,22 @@ public class TransferController {
         return R.ok();
     }
 
+    @SaCheckRole("role_1")
+    @Operation(summary = "审核通过调拨单")
+    @PutMapping("/{id}/approve")
+    public R<Void> approve(@PathVariable Long id) {
+        transferService.approve(id);
+        return R.ok();
+    }
+
+    @SaCheckRole("role_1")
+    @Operation(summary = "驳回调拨单")
+    @PutMapping("/{id}/reject")
+    public R<Void> reject(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        transferService.reject(id, body.getOrDefault("reason", ""));
+        return R.ok();
+    }
+
     @Operation(summary = "取消调拨单")
     @PutMapping("/{id}/cancel")
     public R<Void> cancel(@PathVariable Long id) {
@@ -147,6 +163,7 @@ public class TransferController {
                     case 0: vo.setStatus("草稿"); break;
                     case 1: vo.setStatus("已完成"); break;
                     case 2: vo.setStatus("已取消"); break;
+                    case 4: vo.setStatus("待审批"); break;
                     default: vo.setStatus("未知"); break;
                 }
             }
