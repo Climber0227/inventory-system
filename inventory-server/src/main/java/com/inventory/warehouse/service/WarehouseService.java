@@ -191,6 +191,28 @@ public class WarehouseService {
 
     @Transactional
     public void update(Warehouse warehouse) {
+        Warehouse existing = warehouseMapper.selectById(warehouse.getId());
+        if (existing == null) throw new BusinessException("仓库不存在");
+
+        // 禁止修改层级
+        if (warehouse.getLevel() != null && !warehouse.getLevel().equals(existing.getLevel())) {
+            throw new BusinessException("层级不可修改");
+        }
+
+        // 禁止修改有库存仓库的上级（防止库存归属混乱）
+        if (warehouse.getParentId() != null && !warehouse.getParentId().equals(existing.getParentId())) {
+            long invCount = inventoryMapper.selectCount(
+                    new LambdaQueryWrapper<Inventory>().eq(Inventory::getWarehouseId, warehouse.getId()));
+            if (invCount > 0) {
+                throw new BusinessException("该仓库存在库存记录，无法调整上级");
+            }
+            long childCount = warehouseMapper.selectCount(
+                    new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getParentId, warehouse.getId()));
+            if (childCount > 0) {
+                throw new BusinessException("该仓库存在子级仓库，无法调整上级");
+            }
+        }
+
         warehouseMapper.updateById(warehouse);
     }
 
