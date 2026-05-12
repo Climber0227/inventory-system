@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, watch } from 'vue'
 import request, { downloadFile } from '../../api/request'
-import type { Product, PageResult, PageParams, Warehouse } from '../../types/api'
+import type { Product, PageResult, PageParams } from '../../types/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../store/user'
@@ -12,7 +12,7 @@ const loading = ref(false)
 const products = ref<Product[]>([])
 const total = ref(0)
 const selectedIds = ref<number[]>([])
-const warehouses = ref<Warehouse[]>([])
+const warehouseTree = ref<any[]>([])
 
 const query = reactive<PageParams & {
   name?: string; code?: string; status?: number; alertOnly?: boolean;
@@ -75,9 +75,12 @@ async function fetchCategories() {
   } catch { /* ignore */ }
 }
 
+const whPath = ref<any>(undefined)
+function onWhChange(val: any) { query.warehouseId = val ?? undefined; handleSearch() }
+
 function handleReset() {
   query.name = ''; query.code = ''; query.status = undefined;
-  query.alertOnly = undefined; query.warehouseId = undefined;
+  query.alertOnly = undefined; query.warehouseId = undefined; whPath.value = undefined;
   query.categoryId = undefined;
   query.minPrice = undefined; query.maxPrice = undefined;
   query.minSalePrice = undefined; query.maxSalePrice = undefined;
@@ -202,7 +205,7 @@ async function handlePrintSingleBarcode(row: Product) {
   } catch { ElMessage.error('获取条码失败') }
 }
 
-onMounted(async () => { const r = await request.get('/warehouse/list'); warehouses.value = r.data.data; fetchCategories(); fetchData() })
+onMounted(async () => { const r = await request.get('/warehouse/tree'); warehouseTree.value = r.data.data || []; fetchCategories(); fetchData() })
 </script>
 
 <template>
@@ -237,9 +240,7 @@ onMounted(async () => { const r = await request.get('/warehouse/list'); warehous
         <el-option label="启用" :value="1" />
         <el-option label="停用" :value="0" />
       </el-select>
-      <el-select v-model="query.warehouseId" placeholder="全部仓库" clearable style="width: 140px" @change="handleSearch">
-        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-      </el-select>
+      <el-cascader v-model="whPath" :options="warehouseTree" :props="{ label: 'name', children: 'children', value: 'id', emitPath: false, checkStrictly: true }" placeholder="全部仓库" clearable style="width: 160px" @change="onWhChange" />
       <el-tree-select
         v-model="query.categoryId"
         :data="categories"
