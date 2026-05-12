@@ -14,10 +14,10 @@ const remarkFocused = ref(false)
 const searchFocused = ref(false)
 
 // 级联仓库选择
-const warehouseTree = ref<any[]>([])
-const whCascade = ref<any[]>([])     // 当前级联路径
+const warehouseTree = ref([])
+const whCascade = ref([])     // 当前级联路径
 const whStep = ref(0)                 // 0=未选, 1=选1级, 2=选2级...
-const whOptions = ref<any[]>([])      // 当前可选项
+const whOptions = ref([])      // 当前可选项
 const showWhPicker = ref(false)
 
 const form = ref({
@@ -40,7 +40,7 @@ function openWarehousePicker() {
   whOptions.value = warehouseTree.value || []
   showWhPicker.value = true
 }
-function selectWhLevel(item: any) {
+function selectWhLevel(item) {
   whCascade.value.push(item)
   if (item.children?.length) {
     whStep.value++
@@ -53,7 +53,7 @@ function selectWhLevel(item: any) {
     loadStock(item.id)
   }
 }
-function goBackTo(index: number) {
+function goBackTo {
   whCascade.value = whCascade.value.slice(0, index + 1)
   const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
   whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
@@ -70,7 +70,7 @@ function goBackWhLevel() {
 const whDisplay = computed(() => {
   if (!form.value.warehouseId) return '请选择'
   // 从树中递归查找仓库名称
-  function find(nodes: any[], id: number): string | null {
+  function find(nodes, id) {
     for (const n of nodes) {
       if (n.id === id) return n.name
       if (n.children) { const r = find(n.children, id); if (r) return r }
@@ -80,11 +80,11 @@ const whDisplay = computed(() => {
   return find(warehouseTree.value, form.value.warehouseId) || '仓库' + form.value.warehouseId
 })
 
-async function loadStock(id: number) {
+async function loadStock {
   warehouseStock.value = {}
   try {
     const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
-    const stock: Record<number, number> = {}
+    const stock = {}
     for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
     warehouseStock.value = stock
   } catch { /* ignore */ }

@@ -13,10 +13,10 @@ const searchKeyword = ref('')
 const searchFocused = ref(false)
 
 // 级联仓库选择
-const warehouseTree = ref<any[]>([])
-const whTarget = ref<'from' | 'to'>('from')
-const whCascade = ref<any[]>([])
-const whOptions = ref<any[]>([])
+const warehouseTree = ref([])
+const whTarget = ref('from')
+const whCascade = ref([])
+const whOptions = ref([])
 const showWhPicker = ref(false)
 
 const form = ref({
@@ -31,13 +31,13 @@ onMounted(async () => {
 })
 
 // 仓库级联
-function openWarehousePicker(target: 'from' | 'to') {
+function openWarehousePicker(target) {
   whTarget.value = target
   whCascade.value = []
   whOptions.value = warehouseTree.value || []
   showWhPicker.value = true
 }
-function selectWhLevel(item: any) {
+function selectWhLevel(item) {
   whCascade.value.push(item)
   if (item.children?.length) { whOptions.value = item.children }
   else {
@@ -47,23 +47,23 @@ function selectWhLevel(item: any) {
     if (whTarget.value === 'from') loadFromStock(item.id)
   }
 }
-function goBackTo(index: number) {
+function goBackTo {
   whCascade.value = whCascade.value.slice(0, index + 1)
   const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
   whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
 }
-function whDisplay(id: number | null): string {
+function whDisplay(id) {
   if (!id) return '请选择'
-  function find(nodes: any[], targetId: number): string | null { for (const n of nodes) { if (n.id === targetId) return n.name; if (n.children) { const r = find(n.children, targetId); if (r) return r } } return null }
+  function find(nodes, targetId) { for (const n of nodes) { if (n.id === targetId) return n.name; if (n.children) { const r = find(n.children, targetId); if (r) return r } } return null }
   return find(warehouseTree.value, id) || ''
 }
 
-async function loadFromStock(id: number) {
+async function loadFromStock {
   stockLoaded.value = false
   fromStock.value = {}
   try {
     const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
-    const stock: Record<number, number> = {}
+    const stock = {}
     for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
     fromStock.value = stock
     stockLoaded.value = true
