@@ -140,7 +140,7 @@ onMounted(fetchTree)
 
     <div class="table-container">
       <el-table :data="treeData" v-loading="loading" stripe border row-key="id" :tree-props="{ children: 'children' }" default-expand-all>
-        <el-table-column prop="name" label="仓库名称" width="180">
+        <el-table-column prop="name" label="仓库名称" width="230">
           <template #default="{ row }">
             <span :style="{ fontWeight: row.level === 1 ? 'bold' : 'normal', color: row.status === 0 ? '#999' : '' }">{{ row.name }}</span>
             <el-tag :type="['','primary','success','warning','info'][row.level]" size="small" style="margin-left:6px;">{{ row.level }}级</el-tag>
@@ -159,7 +159,7 @@ onMounted(fetchTree)
         <el-table-column prop="status" label="状态" width="80">
           <template #default="{ row }"><el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">{{ row.status === 1 ? '启用' : '停用' }}</el-tag></template>
         </el-table-column>
-        <el-table-column label="操作" width="280" fixed="right">
+        <el-table-column label="操作" min-width="280" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button v-if="row.level < 4" size="small" type="primary" @click="openCreate(row)">+ 新增子级</el-button>
