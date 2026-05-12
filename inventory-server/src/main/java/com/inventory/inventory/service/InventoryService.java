@@ -12,8 +12,10 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -36,19 +38,22 @@ public class InventoryService {
                 .eq(warehouseId != null, Inventory::getWarehouseId, warehouseId)
                 .orderByDesc(Inventory::getId);
 
-        // 按商品名称搜索：先查出匹配的商品ID，再过滤库存
+        // 按商品名称或编码搜索
         if (productName != null && !productName.isEmpty() && productId == null) {
-            List<Product> matchedProducts = productMapper.selectList(
-                    new LambdaQueryWrapper<Product>()
-                            .like(Product::getName, productName)
-                            .or().like(Product::getCode, productName)
-            );
-            if (!matchedProducts.isEmpty()) {
-                List<Long> productIds = matchedProducts.stream().map(Product::getId).collect(Collectors.toList());
+            // 先尝试精确匹配编码
+            List<Product> codeMatched = productMapper.selectList(
+                    new LambdaQueryWrapper<Product>().eq(Product::getCode, productName));
+            // 再模糊匹配名称
+            List<Product> nameMatched = productMapper.selectList(
+                    new LambdaQueryWrapper<Product>().like(Product::getName, productName));
+            // 合并去重
+            Set<Long> productIds = new LinkedHashSet<>();
+            codeMatched.forEach(p -> productIds.add(p.getId()));
+            nameMatched.forEach(p -> productIds.add(p.getId()));
+            if (!productIds.isEmpty()) {
                 wrapper.in(Inventory::getProductId, productIds);
             } else {
-                // 无匹配商品，返回空结果
-                return page;
+                return page; // 无匹配
             }
         }
         Page<Inventory> result = inventoryMapper.selectPage(page, wrapper);
