@@ -53,7 +53,7 @@ function selectWhLevel(item) {
     loadStock(item.id)
   }
 }
-function goBackTo {
+function goBackTo(index) {
   whCascade.value = whCascade.value.slice(0, index + 1)
   const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
   whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
@@ -80,7 +80,7 @@ const whDisplay = computed(() => {
   return find(warehouseTree.value, form.value.warehouseId) || '仓库' + form.value.warehouseId
 })
 
-async function loadStock {
+async function loadStock(id) {
   warehouseStock.value = {}
   try {
     const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
