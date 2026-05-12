@@ -70,6 +70,22 @@ public class SalesOrderController {
         return R.ok();
     }
 
+    @SaCheckRole("role_1")
+    @Operation(summary = "审核通过销售订单")
+    @PutMapping("/{id}/approve")
+    public R<Void> approve(@PathVariable Long id) {
+        salesOrderService.approve(id);
+        return R.ok();
+    }
+
+    @SaCheckRole("role_1")
+    @Operation(summary = "驳回销售订单")
+    @PutMapping("/{id}/reject")
+    public R<Void> reject(@PathVariable Long id, @RequestBody Map<String, String> body) {
+        salesOrderService.reject(id, body.getOrDefault("reason", ""));
+        return R.ok();
+    }
+
     @Operation(summary = "取消销售订单")
     @PutMapping("/{id}/cancel")
     public R<Void> cancel(@PathVariable Long id) {
@@ -109,6 +125,8 @@ public class SalesOrderController {
                 statusText = "已出库";
             } else if (order.getStatus() == OrderStatus.CANCELED) {
                 statusText = "已取消";
+            } else if (order.getStatus() == OrderStatus.PENDING) {
+                statusText = "待审批";
             } else {
                 statusText = "未知";
             }
