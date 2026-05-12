@@ -167,6 +167,15 @@ public class WarehouseService {
         if (warehouse.getLevel() == null || warehouse.getLevel() == 4) {
             warehouse.setCode(generateWarehouseCode());
         }
+        // 校验层级连续性：子级层级 = 父级层级 + 1
+        if (warehouse.getParentId() != null) {
+            Warehouse parent = warehouseMapper.selectById(warehouse.getParentId());
+            if (parent != null && warehouse.getLevel() != null) {
+                if (parent.getLevel() == null || warehouse.getLevel() != parent.getLevel() + 1) {
+                    throw new BusinessException("仓库层级不连续，子级层级必须为父级层级+1");
+                }
+            }
+        }
         warehouseMapper.insert(warehouse);
     }
 
