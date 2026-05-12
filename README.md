@@ -319,4 +319,3 @@ inventory/
 
 ## License
 
-MIT
