@@ -128,7 +128,6 @@ onMounted(fetchTree)
         placeholder="按层级筛选"
         clearable
         style="width:200px"
-        @change="handleSearch"
       />
       <el-input v-model="query.keyword" placeholder="搜索仓库名称/编码" clearable style="width:220px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-input v-model="query.name" placeholder="仓库名称" clearable style="width:160px" @keyup.enter="handleSearch" @clear="handleSearch" />
