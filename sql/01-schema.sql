@@ -112,7 +112,7 @@ CREATE TABLE `product` (
 -- 2.3 仓库表
 CREATE TABLE `warehouse` (
   `id`          BIGINT       NOT NULL AUTO_INCREMENT COMMENT '主键',
-  `code`        VARCHAR(64)  NOT NULL COMMENT '仓库编码',
+  `code`        VARCHAR(64)  NULL     COMMENT '仓库编码（1-3级虚拟节点为null）',
   `name`        VARCHAR(200) NOT NULL COMMENT '仓库名称',
   `contact`     VARCHAR(50)  NULL     COMMENT '联系人',
   `phone`       VARCHAR(20)  NULL     COMMENT '联系电话',
