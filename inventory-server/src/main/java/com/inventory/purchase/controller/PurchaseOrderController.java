@@ -18,6 +18,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -91,10 +92,17 @@ public class PurchaseOrderController {
 
     @Operation(summary = "导出采购订单")
     @GetMapping("/export")
-    public void export(HttpServletResponse response) {
-        List<PurchaseOrder> list = purchaseOrderService.listAll();
-        List<PurchaseOrderExportVO> voList = list.stream()
+    public void export(HttpServletResponse response,
+                       @RequestParam(required = false) String ids) {
+        List<PurchaseOrder> allList = purchaseOrderService.listAll();
+        List<PurchaseOrder> list = allList.stream()
                 .filter(o -> o.getStatus() != null && o.getStatus() != 3)
+                .collect(Collectors.toList());
+        if (ids != null && !ids.isEmpty()) {
+            List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            list = list.stream().filter(o -> idList.contains(o.getId())).collect(Collectors.toList());
+        }
+        List<PurchaseOrderExportVO> voList = list.stream()
                 .map(order -> {
             PurchaseOrderExportVO vo = new PurchaseOrderExportVO();
             vo.setOrderNo(order.getOrderNo());

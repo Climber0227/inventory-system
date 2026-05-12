@@ -101,8 +101,9 @@ async function handleBatchDelete() {
     ElMessage.success('已作废'); selectedIds.value = []; fetchData()
   } catch {}
 }
-function handleExport() {
-  downloadFile('/transfer/export', '库存调拨.xlsx')
+function handleExport(selected = false) {
+  const url = selected && selectedIds.value.length ? `/transfer/export?ids=${selectedIds.value.join(',')}` : '/transfer/export'
+  downloadFile(url, '库存调拨.xlsx')
 }
 onMounted(async () => {
   const wRes = await request.get('/warehouse/list')
@@ -136,6 +137,7 @@ onMounted(async () => {
     <div class="table-container">
       <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;">
         <span style="font-size:13px;color:#666;">{{ selectedIds.length ? '已选 ' + selectedIds.length + ' 项' : '批量操作' }}</span>
+        <el-button size="small" :disabled="!selectedIds.length" @click="handleExport(true)">批量导出</el-button>
         <el-button v-if="userStore.isAdmin" size="small" type="danger" :disabled="!selectedIds.length" @click="handleBatchDelete">批量作废</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border @selection-change="(rows: any[]) => selectedIds = rows.map((r: any) => r.id)">

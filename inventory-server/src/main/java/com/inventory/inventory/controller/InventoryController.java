@@ -17,6 +17,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -60,8 +61,13 @@ public class InventoryController {
 
     @Operation(summary = "导出库存")
     @GetMapping("/export")
-    public void export(HttpServletResponse response) {
+    public void export(HttpServletResponse response,
+                       @RequestParam(required = false) String ids) {
         List<Inventory> list = inventoryService.listAll();
+        if (ids != null && !ids.isEmpty()) {
+            List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            list = list.stream().filter(inv -> idList.contains(inv.getId())).collect(Collectors.toList());
+        }
         List<InventoryExportVO> voList = list.stream().map(inv -> {
             InventoryExportVO vo = new InventoryExportVO();
             vo.setProductCode(inv.getProductCode());
@@ -78,8 +84,13 @@ public class InventoryController {
 
     @Operation(summary = "导出库存流水")
     @GetMapping("/log/export")
-    public void exportLog(HttpServletResponse response) {
+    public void exportLog(HttpServletResponse response,
+                          @RequestParam(required = false) String ids) {
         List<InventoryLog> list = inventoryLogService.listAll();
+        if (ids != null && !ids.isEmpty()) {
+            List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            list = list.stream().filter(log -> idList.contains(log.getId())).collect(Collectors.toList());
+        }
         List<InventoryLogExportVO> voList = list.stream().map(log -> {
             InventoryLogExportVO vo = new InventoryLogExportVO();
             vo.setProductName(log.getProductName());

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -89,8 +90,13 @@ public class ProductController {
 
     @Operation(summary = "导出商品")
     @GetMapping("/export")
-    public void export(HttpServletResponse response) {
+    public void export(HttpServletResponse response,
+                       @RequestParam(required = false) String ids) {
         List<Product> list = productService.listAll();
+        if (ids != null && !ids.isEmpty()) {
+            List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            list = list.stream().filter(p -> idList.contains(p.getId())).collect(Collectors.toList());
+        }
         List<ProductExportVO> voList = list.stream().map(p -> {
             ProductExportVO vo = new ProductExportVO();
             vo.setCode(p.getCode());

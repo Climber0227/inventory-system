@@ -17,6 +17,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -148,10 +149,15 @@ public class TransferController {
 
     @Operation(summary = "导出调拨单")
     @GetMapping("/export")
-    public void export(HttpServletResponse response) {
+    public void export(HttpServletResponse response,
+                       @RequestParam(required = false) String ids) {
         List<InventoryTransfer> list = transferService.listAll().stream()
                 .filter(t -> t.getStatus() != null && t.getStatus() != 3)
                 .collect(Collectors.toList());
+        if (ids != null && !ids.isEmpty()) {
+            List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            list = list.stream().filter(t -> idList.contains(t.getId())).collect(Collectors.toList());
+        }
         List<TransferExportVO> voList = list.stream().map(s -> {
             TransferExportVO vo = new TransferExportVO();
             vo.setOrderNo(s.getOrderNo());

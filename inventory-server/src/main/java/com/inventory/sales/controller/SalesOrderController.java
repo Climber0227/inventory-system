@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -103,10 +104,16 @@ public class SalesOrderController {
 
     @Operation(summary = "导出销售订单")
     @GetMapping("/export")
-    public void export(HttpServletResponse response) {
-        List<SalesOrder> list = salesOrderService.listAll();
-        List<SalesOrderExportVO> voList = list.stream()
+    public void export(HttpServletResponse response,
+                       @RequestParam(required = false) String ids) {
+        List<SalesOrder> allList = salesOrderService.listAll().stream()
                 .filter(o -> o.getStatus() != null && o.getStatus() != 3)
+                .collect(Collectors.toList());
+        if (ids != null && !ids.isEmpty()) {
+            List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            allList = allList.stream().filter(o -> idList.contains(o.getId())).collect(Collectors.toList());
+        }
+        List<SalesOrderExportVO> voList = allList.stream()
                 .map(order -> {
             SalesOrderExportVO vo = new SalesOrderExportVO();
             vo.setOrderNo(order.getOrderNo());
