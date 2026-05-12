@@ -3,27 +3,49 @@ import { ref, onMounted, watch, computed } from 'vue'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
 
-const warehouses = ref([])
 const products = ref([])
 const loading = ref(false)
 const warehouseInventory = ref([])
 const selectedIds = ref(new Set())
 const items = ref([])
+// 级联仓库选择
+const warehouseTree = ref([])
+const whCascade = ref([])
+const whOptions = ref([])
+const showWhPicker = ref(false)
 
 const form = ref({
   warehouseId: null,
-  takeType: 0, // 0=全盘 1=抽盘
+  takeType: 0,
   stockTakeId: null,
 })
 
-const step = ref('config') // config → counting → done
+const step = ref('config')
+
+// 级联仓库
+function openWarehousePicker() { whCascade.value = []; whOptions.value = warehouseTree.value || []; showWhPicker.value = true }
+function selectWhLevel(item) {
+  whCascade.value.push(item)
+  if (item.children?.length) { whOptions.value = item.children }
+  else { form.value.warehouseId = item.id; showWhPicker.value = false }
+}
+function goBackTo(index) {
+  whCascade.value = whCascade.value.slice(0, index + 1)
+  const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
+  whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
+}
+const whLabel = computed(() => {
+  if (!form.value.warehouseId) return '请选择仓库'
+  function find(nodes, id) { for (const n of nodes) { if (n.id === id) return n.name; if (n.children) { const r = find(n.children, id); if (r) return r } } return null }
+  return find(warehouseTree.value, form.value.warehouseId) || '请选择仓库'
+})
 
 async function fetchBase() {
-  const [wRes, pRes] = await Promise.all([
-    request.get('/warehouse/list'),
+  const [tRes, pRes] = await Promise.all([
+    request.get('/warehouse/tree'),
     request.get('/product/list'),
   ])
-  warehouses.value = wRes.data
+  warehouseTree.value = tRes.data || []
   products.value = pRes.data
 }
 
@@ -176,9 +198,28 @@ onMounted(fetchBase)
     <view v-if="step === 'config'" class="section">
       <view class="form-item">
         <text class="label">盘点仓库 *</text>
-        <picker @change="e => form.warehouseId = warehouses[e.detail.value]?.id" :range="warehouses" range-key="name">
-          <view class="picker">{{ warehouses.find(w => w.id === form.warehouseId)?.name || '请选择仓库' }}</view>
-        </picker>
+        <view class="picker picker-select" @click="openWarehousePicker">{{ whLabel }}</view>
+        <!-- 级联仓库选择 -->
+        <view v-if="showWhPicker" class="picker-overlay" @click="showWhPicker = false">
+          <view class="picker-modal" @click.stop>
+            <view class="picker-header">
+              <text class="picker-cancel" @click="showWhPicker = false">取消</text>
+              <text style="font-weight:bold;">选择仓库</text>
+              <view style="width:40px;"></view>
+            </view>
+            <view v-if="whCascade.length" class="wh-breadcrumb">
+              <text v-for="(c, i) in whCascade" :key="i" class="wh-crumb" @click="goBackTo(i)">{{ c.name }}<text v-if="i < whCascade.length - 1"> ›</text></text>
+            </view>
+            <scroll-view scroll-y class="picker-list">
+              <view v-for="item in whOptions" :key="item.id" class="picker-item" @click="selectWhLevel(item)">
+                <text :style="{ fontWeight: item.children?.length ? 'bold' : 'normal' }">{{ item.name }}</text>
+                <text style="font-size:11px;color:#999;">{{ item.level }}级</text>
+                <text v-if="item.children?.length" style="margin-left:auto;color:#ccc;">›</text>
+              </view>
+              <view v-if="!whOptions.length" style="text-align:center;padding:30px 0;color:#999;">无下级仓库</view>
+            </scroll-view>
+          </view>
+        </view>
       </view>
 
       <view class="form-item">
@@ -330,4 +371,8 @@ onMounted(fetchBase)
 .picker-list { padding: 0 16px 20px; max-height: 55vh; overflow-y: auto; }
 .picker-item { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid #f5f5f5; }
 .picker-item:active { background: #f5f7f5; }
+.picker-header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #eee; }
+.picker-cancel { color: #666; font-size: 14px; }
+.wh-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 16px; background: #f5f7fa; font-size: 13px; }
+.wh-crumb { color: #2e7d32; }
 </style>
