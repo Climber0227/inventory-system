@@ -14,9 +14,9 @@ const salesmanFocused = ref(false)
 const searchFocused = ref(false)
 
 // 级联仓库选择
-const warehouseTree = ref<any[]>([])
-const whCascade = ref<any[]>([])
-const whOptions = ref<any[]>([])
+const warehouseTree = ref([])
+const whCascade = ref([])
+const whOptions = ref([])
 const showWhPicker = ref(false)
 
 const form = ref({
@@ -33,27 +33,27 @@ onMounted(async () => {
 
 // 仓库级联
 function openWarehousePicker() { whCascade.value = []; whOptions.value = warehouseTree.value || []; showWhPicker.value = true }
-function selectWhLevel(item: any) {
+function selectWhLevel(item) {
   whCascade.value.push(item)
   if (item.children?.length) { whOptions.value = item.children }
   else { form.value.warehouseId = item.id; showWhPicker.value = false; loadStock(item.id) }
 }
-function goBackTo(index: number) {
+function goBackTo {
   whCascade.value = whCascade.value.slice(0, index + 1)
   const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
   whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
 }
 const whDisplay = computed(() => {
   if (!form.value.warehouseId) return '请选择'
-  function find(nodes: any[], id: number): string | null { for (const n of nodes) { if (n.id === id) return n.name; if (n.children) { const r = find(n.children, id); if (r) return r } } return null }
+  function find(nodes, id) { for (const n of nodes) { if (n.id === id) return n.name; if (n.children) { const r = find(n.children, id); if (r) return r } } return null }
   return find(warehouseTree.value, form.value.warehouseId) || '仓库' + form.value.warehouseId
 })
 
-async function loadStock(id: number) {
+async function loadStock {
   warehouseStock.value = {}
   try {
     const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
-    const stock: Record<number, number> = {}
+    const stock = {}
     for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
     warehouseStock.value = stock
   } catch { /* ignore */ }
