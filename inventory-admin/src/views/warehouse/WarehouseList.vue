@@ -1,11 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted } from 'vue'
 import request, { downloadFile } from '../../api/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../../store/user'
 
-const router = useRouter()
 const userStore = useUserStore()
 const loading = ref(false)
 const treeData = ref<any[]>([])
