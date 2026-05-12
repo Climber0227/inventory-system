@@ -127,8 +127,9 @@ async function handleToggleStatus(row: Product) {
   fetchData()
 }
 
-function handleExport() {
-  downloadFile('/product/export', '商品管理.xlsx')
+function handleExport(selected = false) {
+  const url = selected && selectedIds.value.length ? `/product/export?ids=${selectedIds.value.join(',')}` : '/product/export'
+  downloadFile(url, '商品管理.xlsx')
 }
 
 async function handleDelete(row: Product) {
@@ -260,6 +261,7 @@ onMounted(async () => { const r = await request.get('/warehouse/list'); warehous
       <el-button size="small" type="success" :disabled="!selectedIds.length" @click="handleBatchToggle(1)">批量启用</el-button>
       <el-button size="small" type="warning" :disabled="!selectedIds.length" @click="handleBatchToggle(0)">批量停用</el-button>
       <el-button size="small" :disabled="!selectedIds.length" @click="handlePrintBarcode">打印条码</el-button>
+	      <el-button size="small" :disabled="!selectedIds.length" @click="handleExport(true)">批量导出</el-button>
     </div>
 
     <!-- 表格 -->

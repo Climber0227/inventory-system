@@ -88,7 +88,10 @@ async function handleBatchDelete() {
 }
 async function fetchSuppliers() { const res = await request.get('/supplier/list'); suppliers.value = res.data.data }
 async function fetchWarehouses() { const res = await request.get('/warehouse/list'); warehouses.value = res.data.data }
-function handleExport() { downloadFile('/purchase-order/export', '采购入库.xlsx') }
+function handleExport(selected = false) {
+  const url = selected && selectedIds.value.length ? `/purchase-order/export?ids=${selectedIds.value.join(',')}` : '/purchase-order/export'
+  downloadFile(url, '采购入库.xlsx')
+}
 function getSummaries(param: { columns: any[]; data: any[] }) {
   const { columns, data } = param
   const sums: string[] = []
@@ -131,6 +134,7 @@ onMounted(() => { fetchData(); fetchSuppliers(); fetchWarehouses() })
     <div class="table-container">
       <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;">
         <span style="font-size:13px;color:#666;">{{ selectedIds.length ? '已选 ' + selectedIds.length + ' 项' : '批量操作' }}</span>
+        <el-button size="small" :disabled="!selectedIds.length" @click="handleExport(true)">批量导出</el-button>
         <el-button v-if="userStore.isAdmin" size="small" type="danger" :disabled="!selectedIds.length" @click="handleBatchDelete">批量作废</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border show-summary :summary-method="getSummaries" @selection-change="(rows: any[]) => selectedIds = rows.map(r => r.id)">

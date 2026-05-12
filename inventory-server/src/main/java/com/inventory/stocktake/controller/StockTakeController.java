@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -91,10 +92,15 @@ public class StockTakeController {
 
     @Operation(summary = "导出盘点单")
     @GetMapping("/export")
-    public void export(HttpServletResponse response) {
+    public void export(HttpServletResponse response,
+                       @RequestParam(required = false) String ids) {
         List<StockTake> list = stockTakeService.listAll().stream()
                 .filter(s -> s.getStatus() != null && s.getStatus() != 3)
                 .collect(Collectors.toList());
+        if (ids != null && !ids.isEmpty()) {
+            List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            list = list.stream().filter(s -> idList.contains(s.getId())).collect(Collectors.toList());
+        }
         List<StockTakeExportVO> voList = list.stream().map(s -> {
             StockTakeExportVO vo = new StockTakeExportVO();
             vo.setOrderNo(s.getOrderNo());
