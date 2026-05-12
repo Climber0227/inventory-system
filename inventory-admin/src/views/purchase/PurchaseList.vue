@@ -22,6 +22,7 @@ const statusMap: Record<number, { label: string; type: string }> = {
   0: { label: '草稿', type: 'info' },
   1: { label: '已入库', type: 'success' },
   2: { label: '已取消', type: 'danger' },
+  4: { label: '待审批', type: 'warning' },
 }
 
 async function fetchData() {
@@ -99,7 +100,7 @@ onMounted(() => { fetchData(); fetchSuppliers(); fetchWarehouses() })
         <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
       </el-select>
       <el-select v-model="query.status" placeholder="状态" clearable style="width:120px" @change="handleSearch">
-        <el-option label="草稿" :value="0" /><el-option label="已入库" :value="1" /><el-option label="已取消" :value="2" />
+        <el-option label="草稿" :value="0" /><el-option label="已入库" :value="1" /><el-option label="已取消" :value="2" /><el-option label="待审批" :value="4" />
       </el-select>
       <el-date-picker v-model="query.startDate" type="date" placeholder="开始日期" value-format="YYYY-MM-DD" style="width:140px" @change="handleSearch" />
       <el-date-picker v-model="query.endDate" type="date" placeholder="结束日期" value-format="YYYY-MM-DD" style="width:140px" @change="handleSearch" />

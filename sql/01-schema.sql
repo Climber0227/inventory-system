@@ -118,12 +118,16 @@ CREATE TABLE `warehouse` (
   `phone`       VARCHAR(20)  NULL     COMMENT '联系电话',
   `address`     VARCHAR(500) NULL     COMMENT '仓库地址',
   `status`      TINYINT      DEFAULT 1 COMMENT '状态 0=停用 1=启用',
+  `level`       TINYINT      DEFAULT 4 COMMENT '层级 1=大区 2=区域 3=城市 4=具体仓库',
+  `parent_id`   BIGINT       NULL     COMMENT '上级ID（1级填null）',
   `remark`      VARCHAR(500) NULL     COMMENT '备注',
   `deleted`     TINYINT      DEFAULT 0,
   `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_code` (`code`)
+  UNIQUE KEY `uk_code` (`code`),
+  KEY `idx_parent` (`parent_id`),
+  KEY `idx_level` (`level`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='仓库表';
 
 -- 2.4 库位表

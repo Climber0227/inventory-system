@@ -28,7 +28,7 @@ const query = reactive<PageParams & {
   startDate: '', endDate: '',
 })
 const statusMap: Record<number, { label: string; type: string }> = {
-  0: { label: '草稿', type: 'info' }, 1: { label: '已出库', type: 'success' }, 2: { label: '已取消', type: 'danger' },
+  0: { label: '草稿', type: 'info' }, 1: { label: '已出库', type: 'success' }, 2: { label: '已取消', type: 'danger' }, 4: { label: '待审批', type: 'warning' },
 }
 async function fetchData() {
   loading.value = true
@@ -107,7 +107,7 @@ onMounted(async () => {
         <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
       </el-select>
       <el-select v-model="query.status" placeholder="状态" clearable style="width:90px" @change="handleSearch">
-        <el-option label="草稿" :value="0" /><el-option label="已出库" :value="1" /><el-option label="已取消" :value="2" />
+        <el-option label="草稿" :value="0" /><el-option label="已出库" :value="1" /><el-option label="已取消" :value="2" /><el-option label="待审批" :value="4" />
       </el-select>
       <el-input v-model="query.salesman" placeholder="销售员" clearable style="width:100px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-input v-model="query.minQuantity" placeholder="最小数量" clearable style="width:95px" @keyup.enter="handleSearch" @clear="handleSearch" />

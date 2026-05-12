@@ -26,6 +26,7 @@ const statusMap: Record<number, { label: string; type: string }> = {
   0: { label: '草稿', type: 'info' },
   1: { label: '已完成', type: 'success' },
   2: { label: '已取消', type: 'danger' },
+  4: { label: '待审批', type: 'warning' },
 }
 
 async function fetchData() {
@@ -103,7 +104,7 @@ onMounted(async () => {
         <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
       </el-select>
       <el-select v-model="query.status" placeholder="状态" clearable style="width:100px" @change="handleSearch">
-        <el-option label="草稿" :value="0" /><el-option label="已完成" :value="1" /><el-option label="已取消" :value="2" />
+        <el-option label="草稿" :value="0" /><el-option label="已完成" :value="1" /><el-option label="已取消" :value="2" /><el-option label="待审批" :value="4" />
       </el-select>
       <el-input v-model="query.operatorName" placeholder="操作人" clearable style="width:120px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-input v-model="query.minQuantity" placeholder="最小数量" clearable style="width:100px" @keyup.enter="handleSearch" @clear="handleSearch" />

@@ -4,6 +4,7 @@ public interface OrderStatus {
     // 入库单/出库单状态
     int DRAFT = 0;      // 草稿
     int CONFIRMED = 1;  // 已入库/已出库
+    int PENDING = 4;    // 待审批
     int CANCELED = 2;   // 已取消
 
     // 盘点单状态
