@@ -55,6 +55,9 @@ function openCreate(parent?: any) {
     if (childLevel <= 4) {
       form.level = childLevel
       form.parentId = parent.id
+      loadParentCandidates(childLevel)
+      dialogVisible.value = true
+      return
     } else {
       ElMessage.warning('已达到最大层级')
       return
