@@ -129,6 +129,8 @@ public class TransferService {
                 vo.setFromWarehouseName(t.getFromWarehouseName());
                 vo.setToWarehouseName(t.getToWarehouseName());
                 vo.setStatus(t.getStatus() != null ? (t.getStatus() == 0 ? "草稿" : t.getStatus() == 1 ? "已完成" : t.getStatus() == 2 ? "已取消" : t.getStatus() == 4 ? "待审批" : "未知") : "未知");
+                if (t.getOrderDate() != null) vo.setOrderDate(t.getOrderDate());
+                if (t.getOperatorName() != null) vo.setOperatorName(t.getOperatorName());
                 vo.setProductName(item.getProductName());
                 vo.setProductCode(item.getProductCode());
                 vo.setQuantity(item.getQuantity());
@@ -140,6 +142,8 @@ public class TransferService {
                 vo.setOrderNo(t.getOrderNo());
                 vo.setFromWarehouseName(t.getFromWarehouseName());
                 vo.setToWarehouseName(t.getToWarehouseName());
+                if (t.getOrderDate() != null) vo.setOrderDate(t.getOrderDate());
+                if (t.getOperatorName() != null) vo.setOperatorName(t.getOperatorName());
                 result.add(vo);
             }
         }
