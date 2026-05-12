@@ -56,8 +56,8 @@ const invByWarehouse = computed(() => {
 function buildTreeWithStock(nodes: any[]): any[] {
   return nodes.map(n => {
     const invs = invByWarehouse.value.get(n.id) || []
-    const qty = invs.reduce((s: i: any) => s + (i.quantity || 0), 0)
-    const amt = invs.reduce((s: i: any) => s + ((i.costPrice || 0) * (i.quantity || 0)), 0)
+    const qty = invs.reduce((s: number, i: any) => s + (i.quantity || 0), 0)
+    const amt = invs.reduce((s: number, i: any) => s + ((i.costPrice || 0) * (i.quantity || 0)), 0)
     const node = { ...n, _pc: invs.length, _qty: qty, _amt: amt }
     if (n.children?.length) {
       node.children = buildTreeWithStock(n.children)
