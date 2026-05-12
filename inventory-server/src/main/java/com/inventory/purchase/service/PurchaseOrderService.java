@@ -193,6 +193,15 @@ public class PurchaseOrderService {
         PurchaseOrder order = purchaseOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("采购单不存在");
         if (order.getStatus() != OrderStatus.DRAFT) throw new BusinessException("当前状态不可提交");
+        order.setStatus(OrderStatus.PENDING);
+        purchaseOrderMapper.updateById(order);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public synchronized void approve(Long id) {
+        PurchaseOrder order = purchaseOrderMapper.selectById(id);
+        if (order == null) throw new BusinessException("采购单不存在");
+        if (order.getStatus() != OrderStatus.PENDING) throw new BusinessException("当前状态不可审核");
 
         List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(
                 new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getOrderId, id));
@@ -275,10 +284,27 @@ public class PurchaseOrderService {
     }
 
     @Transactional(rollbackFor = Exception.class)
+    public void reject(Long id, String reason) {
+        PurchaseOrder order = purchaseOrderMapper.selectById(id);
+        if (order == null) throw new BusinessException("采购单不存在");
+        if (order.getStatus() != OrderStatus.PENDING) throw new BusinessException("当前状态不可驳回");
+        order.setStatus(OrderStatus.DRAFT);
+        order.setRemark((order.getRemark() != null ? order.getRemark() + " | " : "") + "驳回原因: " + (reason != null ? reason : ""));
+        purchaseOrderMapper.updateById(order);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
     public synchronized void cancel(Long id) {
         PurchaseOrder order = purchaseOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("采购单不存在");
         if (order.getStatus() == OrderStatus.CANCELED) throw new BusinessException("采购单已取消");
+
+        if (order.getStatus() == OrderStatus.PENDING) {
+            // 待审批状态直接取消，无需回滚库存
+            order.setStatus(OrderStatus.CANCELED);
+            purchaseOrderMapper.updateById(order);
+            return;
+        }
 
         if (order.getStatus() == OrderStatus.CONFIRMED) {
             List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(
