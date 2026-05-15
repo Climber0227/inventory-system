@@ -44,22 +44,32 @@
     "list": [
       {
         "pagePath": "pages/home/home",
+        "iconPath": "static/tabbar/home.png",
+        "selectedIconPath": "static/tabbar/home-sel.png",
         "text": "首页"
       },
       {
         "pagePath": "pages/purchase/list",
+        "iconPath": "static/tabbar/purchase.png",
+        "selectedIconPath": "static/tabbar/purchase-sel.png",
         "text": "入库"
       },
       {
         "pagePath": "pages/sales/list",
+        "iconPath": "static/tabbar/sales.png",
+        "selectedIconPath": "static/tabbar/sales-sel.png",
         "text": "出库"
       },
       {
         "pagePath": "pages/inventory/query",
+        "iconPath": "static/tabbar/inventory.png",
+        "selectedIconPath": "static/tabbar/inventory-sel.png",
         "text": "库存"
       },
       {
         "pagePath": "pages/profile/profile",
+        "iconPath": "static/tabbar/profile.png",
+        "selectedIconPath": "static/tabbar/profile-sel.png",
         "text": "我的"
       }
     ]

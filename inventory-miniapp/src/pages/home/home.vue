@@ -85,22 +85,6 @@ function goPage(url) {
       </view>
     </view>
 
-    <!-- 预警卡片 -->
-    <view class="alert-card" @click="goPage('/pages/alert/list')">
-      <view class="alert-left">
-        <text class="alert-icon">⚠️</text>
-        <view>
-          <text class="alert-title">库存预警</text>
-          <text v-if="stats.alertCount > 0" class="alert-desc">有 {{ stats.alertCount }} 项商品低于安全库存</text>
-          <text v-else class="alert-desc" style="color:#999;">暂无预警，库存状况良好</text>
-        </view>
-      </view>
-      <view class="alert-right">
-        <text v-if="stats.alertCount > 0" class="alert-badge">{{ stats.alertCount }}</text>
-        <text class="alert-arrow">›</text>
-      </view>
-    </view>
-
     <!-- 单据入口网格 -->
     <view class="section">
       <text class="section-title">单据列表</text>
@@ -218,33 +202,6 @@ function goPage(url) {
 .ab-purple { border-top-color: #7b1fa2; }
 .ab-icon { font-size: 26px; display: block; margin-bottom: 6px; }
 .ab-lbl { font-size: 13px; color: #333; font-weight: 600; }
-
-/* ===== 预警卡片 ===== */
-.alert-card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 16px;
-  margin-bottom: 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 3px 12px rgba(0,0,0,0.05);
-  border-left: 4px solid #e65100;
-  transition: all 0.15s;
-}
-.alert-card:active { transform: scale(0.97); }
-.alert-left { display: flex; align-items: center; gap: 12px; flex: 1; }
-.alert-icon { font-size: 22px; }
-.alert-title { font-size: 15px; font-weight: 600; color: #1a1a1a; display: block; }
-.alert-desc { font-size: 12px; color: #e65100; margin-top: 2px; display: block; }
-.alert-right { display: flex; align-items: center; gap: 8px; }
-.alert-badge {
-  background: #c62828; color: #fff;
-  min-width: 24px; height: 24px; border-radius: 12px;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 12px; font-weight: 700; padding: 0 6px;
-}
-.alert-arrow { color: #ccc; font-size: 20px; }
 
 /* ===== 单据入口 ===== */
 .doc-grid {
