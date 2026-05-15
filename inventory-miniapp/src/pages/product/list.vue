@@ -69,7 +69,7 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
       <input v-model="keyword" class="search-input" placeholder="搜索名称或编码" @confirm="onSearch" style="flex:1;" />
       <view class="search-btn" @click="onSearch">搜索</view>
       <view class="reset-btn" @click="keyword = ''; filterStatus = null; fetchData()">重置</view>
-      <view class="sort-btn" :class="{ active: activeSort }" @click="showSort = !showSort">{{ sortLabel() }}</view>
+      <view class="sort-btn" :class="{ active: activeSort }" @click="activeSort ? setSort(activeSort, activeSortDir === 'asc' ? 'desc' : 'asc') : showSort = !showSort">{{ sortLabel() }}</view>
     </view>
     <view v-if="showSort" class="sort-panel">
       <view class="sort-row" @click="setSort('stock', 'desc')">库存 <text :class="{ active: activeSort === 'stock' && activeSortDir === 'desc' }">↓</text><text :class="{ active: activeSort === 'stock' && activeSortDir === 'asc' }">↑</text></view>
