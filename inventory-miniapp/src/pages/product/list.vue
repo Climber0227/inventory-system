@@ -13,16 +13,9 @@ const sortField = ref('')
 const sortDir = ref('')
 const filterStatus = ref(null)
 
-const sortOptions = [
-  { f: '', d: '', l: '默认' },
-  { f: 'stock', d: 'desc', l: '库存↓' },
-  { f: 'stock', d: 'asc', l: '库存↑' },
-  { f: 'purchase', d: 'desc', l: '采购价↓' },
-  { f: 'purchase', d: 'asc', l: '采购价↑' },
-  { f: 'sale', d: 'desc', l: '销售价↓' },
-  { f: 'sale', d: 'asc', l: '销售价↑' },
-]
-let sortIndex = 0
+const showSort = ref(false)
+const activeSort = ref('') // 'stock', 'purchase', 'sale'
+const activeSortDir = ref('') // 'asc', 'desc'
 
 async function fetchData(append = false) {
   if (loading.value) return
@@ -45,11 +38,19 @@ async function fetchData(append = false) {
 }
 
 function onSearch() { fetchData() }
-function cycleSort() {
-  sortIndex = (sortIndex + 1) % sortOptions.length
-  const opt = sortOptions[sortIndex]
-  sortField.value = opt.f; sortDir.value = opt.d
-  fetchData()
+function setSort(field, dir) {
+  if (activeSort.value === field && activeSortDir.value === dir) {
+    activeSort.value = ''; activeSortDir.value = '' // 取消排序
+  } else {
+    activeSort.value = field; activeSortDir.value = dir
+  }
+  sortField.value = activeSort.value; sortDir.value = activeSortDir.value
+  showSort.value = false; fetchData()
+}
+function sortLabel() {
+  if (!activeSort.value) return '排序'
+  const labels = { stock: '库存', purchase: '采购价', sale: '销售价' }
+  return labels[activeSort.value] + (activeSortDir.value === 'asc' ? '↑' : '↓')
 }
 function setStatusFilter(v) { filterStatus.value = v; fetchData() }
 function onScrollToLower() {
@@ -68,13 +69,14 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
       <input v-model="keyword" class="search-input" placeholder="搜索名称或编码" @confirm="onSearch" style="flex:1;" />
       <view class="search-btn" @click="onSearch">搜索</view>
       <view class="reset-btn" @click="keyword = ''; filterStatus = null; fetchData()">重置</view>
-      <view class="sort-btn" :class="{ active: sortField }" @click="cycleSort">{{ sortOptions[sortIndex].l }}</view>
+      <view class="sort-btn" :class="{ active: activeSort }" @click="showSort = !showSort">{{ sortLabel() }}</view>
     </view>
-    <view v-if="filterStatus != null" style="margin-bottom:8px;">
-      <text class="status-tag" @click="setStatusFilter(null)">全部 ×</text>
-      <text class="status-tag on">{{ filterStatus === 1 ? '启用' : '停用' }}</text>
+    <view v-if="showSort" class="sort-panel">
+      <view class="sort-row" @click="setSort('stock', 'desc')">库存 <text :class="{ active: activeSort === 'stock' && activeSortDir === 'desc' }">↓</text><text :class="{ active: activeSort === 'stock' && activeSortDir === 'asc' }">↑</text></view>
+      <view class="sort-row" @click="setSort('purchase', 'desc')">采购价 <text :class="{ active: activeSort === 'purchase' && activeSortDir === 'desc' }">↓</text><text :class="{ active: activeSort === 'purchase' && activeSortDir === 'asc' }">↑</text></view>
+      <view class="sort-row" @click="setSort('sale', 'desc')">销售价 <text :class="{ active: activeSort === 'sale' && activeSortDir === 'desc' }">↓</text><text :class="{ active: activeSort === 'sale' && activeSortDir === 'asc' }">↑</text></view>
     </view>
-    <view style="display:flex;gap:6px;margin-bottom:10px;">
+    <view style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
       <text class="st-pill" :class="{ on: filterStatus === null }" @click="setStatusFilter(null)">全部</text>
       <text class="st-pill" :class="{ on: filterStatus === 1 }" @click="setStatusFilter(1)">启用</text>
       <text class="st-pill" :class="{ on: filterStatus === 0 }" @click="setStatusFilter(0)">停用</text>
@@ -122,7 +124,10 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 .reset-btn { background: #f5f5f5; color: #666; border-radius: 10px; padding: 0 16px; font-size: 13px; display: flex; align-items: center; white-space: nowrap; }
 .sort-btn { background: #fff; border-radius: 10px; padding: 0 12px; font-size: 12px; display: flex; align-items: center; white-space: nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.04); color:#666; }
 .sort-btn.active { color: #2e7d32; font-weight: 600; }
+.sort-panel { background:#fff; border-radius:10px; padding:8px; margin-bottom:10px; display:flex; gap:8px; box-shadow:0 1px 4px rgba(0,0,0,0.04); }
+.sort-row { flex:1; text-align:center; padding:6px 0; border-radius:6px; font-size:13px; color:#666; background:#f5f5f5; }
+.sort-row text { color:#bbb; margin:0 2px; }
+.sort-row text.active { color:#2e7d32; font-weight:700; }
 .st-pill { background: #f5f5f5; border-radius: 8px; padding: 4px 10px; font-size: 12px; color: #666; }
 .st-pill.on { background: #e8f5e9; color: #2e7d32; font-weight: 600; }
-.status-tag { display:inline-block; background:#e8f5e9; border-radius:6px; padding:4px 8px; font-size:12px; color:#2e7d32; font-weight:500; }
 </style>
