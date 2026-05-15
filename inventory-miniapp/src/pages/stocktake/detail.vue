@@ -2,8 +2,10 @@
 import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
+import { useUserStore } from '@/store/user'
 import FloatingHome from '@/components/FloatingHome'
 
+const userStore = useUserStore()
 const order = ref(null)
 const items = ref([])
 const loading = ref(false)
@@ -104,8 +106,8 @@ async function saveItem(item) {
       </view>
     </view>
     <view class="action-bar">
-      <button v-if="order?.status === 0" class="btn-approve" :loading="actionLoading" @click="approveTake">审核通过</button>
-      <button v-if="order?.status === 1" class="btn-adjust" :loading="actionLoading" @click="adjustTake">执行调整</button>
+      <button v-if="userStore.isAdmin && order?.status === 0" class="btn-approve" :loading="actionLoading" @click="approveTake">审核通过</button>
+      <button v-if="userStore.isAdmin && order?.status === 1" class="btn-adjust" :loading="actionLoading" @click="adjustTake">执行调整</button>
     </view>
     <FloatingHome />
   </view>
