@@ -7,10 +7,22 @@ import FloatingHome from '@/components/FloatingHome'
 const list = ref([])
 const loading = ref(false)
 const keyword = ref('')
-const codeKeyword = ref('')
 const page = ref(1)
 const hasMore = ref(true)
-const stockSort = ref('')
+const sortField = ref('')
+const sortDir = ref('')
+const filterStatus = ref(null)
+
+const sortOptions = [
+  { f: '', d: '', l: '默认' },
+  { f: 'stock', d: 'desc', l: '库存↓' },
+  { f: 'stock', d: 'asc', l: '库存↑' },
+  { f: 'purchase', d: 'desc', l: '采购价↓' },
+  { f: 'purchase', d: 'asc', l: '采购价↑' },
+  { f: 'sale', d: 'desc', l: '销售价↓' },
+  { f: 'sale', d: 'asc', l: '销售价↑' },
+]
+let sortIndex = 0
 
 async function fetchData(append = false) {
   if (loading.value) return
@@ -18,12 +30,14 @@ async function fetchData(append = false) {
   try {
     if (!append) { page.value = 1; hasMore.value = true }
     const params = { page: page.value, size: 20 }
-    if (keyword.value) params.name = keyword.value
-    if (codeKeyword.value) params.code = codeKeyword.value
+    if (keyword.value) { params.name = keyword.value; params.code = keyword.value }
+    if (filterStatus.value != null) params.status = filterStatus.value
     const res = await request.get('/product/page', { params })
     let records = res.data.records || []
-    if (stockSort.value === 'asc') records.sort((a, b) => (a.inventoryQuantity || 0) - (b.inventoryQuantity || 0))
-    else if (stockSort.value === 'desc') records.sort((a, b) => (b.inventoryQuantity || 0) - (a.inventoryQuantity || 0))
+    // 客户端排序
+    if (sortField.value === 'stock') records.sort((a, b) => sortDir.value === 'asc' ? (a.inventoryQuantity||0) - (b.inventoryQuantity||0) : (b.inventoryQuantity||0) - (a.inventoryQuantity||0))
+    else if (sortField.value === 'purchase') records.sort((a, b) => sortDir.value === 'asc' ? (a.purchasePrice||0) - (b.purchasePrice||0) : (b.purchasePrice||0) - (a.purchasePrice||0))
+    else if (sortField.value === 'sale') records.sort((a, b) => sortDir.value === 'asc' ? (a.salePrice||0) - (b.salePrice||0) : (b.salePrice||0) - (a.salePrice||0))
     if (append) { list.value = [...list.value, ...records] }
     else { list.value = records }
     hasMore.value = records.length >= 20
@@ -31,10 +45,13 @@ async function fetchData(append = false) {
 }
 
 function onSearch() { fetchData() }
-function toggleStockSort() {
-  stockSort.value = stockSort.value === 'desc' ? 'asc' : 'desc'
+function cycleSort() {
+  sortIndex = (sortIndex + 1) % sortOptions.length
+  const opt = sortOptions[sortIndex]
+  sortField.value = opt.f; sortDir.value = opt.d
   fetchData()
 }
+function setStatusFilter(v) { filterStatus.value = v; fetchData() }
 function onScrollToLower() {
   if (!hasMore.value || loading.value) return
   page.value++
@@ -47,16 +64,20 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 
 <template>
   <view class="page" style="padding:12px;height:100vh;display:flex;flex-direction:column;">
-    <view style="display:flex;gap:8px;margin-bottom:10px;">
-      <input v-model="keyword" class="search-input" placeholder="搜索名称" @confirm="onSearch" style="flex:1;" />
-      <view class="pill-btn" @click="onSearch">搜索</view>
-      <view class="reset-btn" @click="keyword = ''; codeKeyword = ''; fetchData()">重置</view>
+    <view style="display:flex;gap:6px;margin-bottom:8px;">
+      <input v-model="keyword" class="search-input" placeholder="搜索名称或编码" @confirm="onSearch" style="flex:1;" />
+      <view class="search-btn" @click="onSearch">搜索</view>
+      <view class="reset-btn" @click="keyword = ''; filterStatus = null; fetchData()">重置</view>
+      <view class="sort-btn" :class="{ active: sortField }" @click="cycleSort">{{ sortOptions[sortIndex].l }}</view>
     </view>
-    <view style="display:flex;gap:8px;margin-bottom:12px;">
-      <input v-model="codeKeyword" class="search-input" placeholder="搜索编码" @confirm="onSearch" style="flex:2;" />
-      <view class="pill-btn" :class="{ active: stockSort }" @click="toggleStockSort">
-        库存{{ stockSort === 'asc' ? '↑' : stockSort === 'desc' ? '↓' : '' }}
-      </view>
+    <view v-if="filterStatus != null" style="margin-bottom:8px;">
+      <text class="status-tag" @click="setStatusFilter(null)">全部 ×</text>
+      <text class="status-tag on">{{ filterStatus === 1 ? '启用' : '停用' }}</text>
+    </view>
+    <view style="display:flex;gap:6px;margin-bottom:10px;">
+      <text class="st-pill" :class="{ on: filterStatus === null }" @click="setStatusFilter(null)">全部</text>
+      <text class="st-pill" :class="{ on: filterStatus === 1 }" @click="setStatusFilter(1)">启用</text>
+      <text class="st-pill" :class="{ on: filterStatus === 0 }" @click="setStatusFilter(0)">停用</text>
     </view>
 
     <scroll-view scroll-y class="scroll-list" @scrolltolower="onScrollToLower">
@@ -99,4 +120,9 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 .pill-btn.active { color: #2e7d32; font-weight: 600; }
 .search-btn { background: #2e7d32; color: #fff; border-radius: 10px; padding: 0 16px; font-size: 13px; display: flex; align-items: center; white-space: nowrap; }
 .reset-btn { background: #f5f5f5; color: #666; border-radius: 10px; padding: 0 16px; font-size: 13px; display: flex; align-items: center; white-space: nowrap; }
+.sort-btn { background: #fff; border-radius: 10px; padding: 0 12px; font-size: 12px; display: flex; align-items: center; white-space: nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.04); color:#666; }
+.sort-btn.active { color: #2e7d32; font-weight: 600; }
+.st-pill { background: #f5f5f5; border-radius: 8px; padding: 4px 10px; font-size: 12px; color: #666; }
+.st-pill.on { background: #e8f5e9; color: #2e7d32; font-weight: 600; }
+.status-tag { display:inline-block; background:#e8f5e9; border-radius:6px; padding:4px 8px; font-size:12px; color:#2e7d32; font-weight:500; }
 </style>

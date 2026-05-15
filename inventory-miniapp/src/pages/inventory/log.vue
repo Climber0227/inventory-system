@@ -1,5 +1,5 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
@@ -9,19 +9,49 @@ const loading = ref(false)
 const keyword = ref('')
 const orderKeyword = ref('')
 
+// 级联仓库选择
+const warehouseTree = ref([])
+const whCascade = ref([])
+const whOptions = ref([])
+const showWhPicker = ref(false)
+const warehouseId = ref(null)
+
 async function fetchData() {
   loading.value = true
   try {
     const params = { page: 1, size: 50 }
     if (keyword.value) params.productName = keyword.value
     if (orderKeyword.value) params.refOrderNo = orderKeyword.value
+    if (warehouseId.value) params.warehouseId = warehouseId.value
     const res = await request.get('/inventory/log/page', { params })
     list.value = res.data.records
   } finally { loading.value = false }
 }
 
+async function fetchWarehouseTree() {
+  const res = await request.get('/warehouse/tree')
+  warehouseTree.value = res.data || []
+}
+
 function onSearch() { fetchData() }
-function onInput(e) { if (!e.detail.value) fetchData() }
+
+// 级联仓库
+function openWarehousePicker() { whCascade.value = []; whOptions.value = warehouseTree.value || []; showWhPicker.value = true }
+function selectWhLevel(item) {
+  whCascade.value.push(item)
+  if (item.children?.length) { whOptions.value = item.children }
+  else { warehouseId.value = item.id; showWhPicker.value = false; fetchData() }
+}
+function goBackTo(index) {
+  whCascade.value = whCascade.value.slice(0, index + 1)
+  const parent = whCascade.value.length ? whCascade.value[whCascade.value.length - 1] : null
+  whOptions.value = parent ? (parent.children || []) : (warehouseTree.value || [])
+}
+const whLabel = computed(() => {
+  if (!warehouseId.value) return '选择仓库'
+  function find(nodes, id) { for (const n of nodes) { if (n.id === id) return n.name; if (n.children) { const r = find(n.children, id); if (r) return r } } return null }
+  return find(warehouseTree.value, warehouseId.value) || '仓库' + warehouseId.value
+})
 
 const typeMap = {
   PURCHASE_IN: '采购入库', SALES_OUT: '销售出库',
@@ -48,7 +78,10 @@ function goToOrder(item) {
   uni.navigateTo({ url: url + '?orderNo=' + encodeURIComponent(item.refOrderNo) })
 }
 
-onShow(fetchData)
+onShow(() => {
+  fetchData()
+  if (!warehouseTree.value.length) fetchWarehouseTree()
+})
 onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 </script>
 
@@ -60,8 +93,31 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
     <view class="search-row">
       <input v-model="keyword" class="search-input" placeholder="商品名称/编码" @confirm="onSearch" style="flex:1;" />
       <input v-model="orderKeyword" class="search-input" placeholder="关联单号" @confirm="onSearch" style="flex:0.8;" />
+      <view class="filter-pill filter-picker" :class="{ on: warehouseId }" @click="openWarehousePicker">{{ whLabel }}</view>
       <view class="search-btn" @click="onSearch">搜索</view>
-      <view class="reset-btn" @click="keyword = ''; orderKeyword = ''; fetchData()">重置</view>
+      <view class="reset-btn" @click="keyword = ''; orderKeyword = ''; warehouseId = null; fetchData()">重置</view>
+    </view>
+
+    <!-- 级联仓库弹窗 -->
+    <view v-if="showWhPicker" class="picker-overlay" @click="showWhPicker = false">
+      <view class="picker-modal" @click.stop>
+        <view class="picker-header">
+          <text class="picker-cancel" @click="showWhPicker = false">取消</text>
+          <text style="font-weight:bold;">选择仓库</text>
+          <view style="width:40px;"></view>
+        </view>
+        <view v-if="whCascade.length" class="wh-breadcrumb">
+          <text v-for="(c, i) in whCascade" :key="i" class="wh-crumb" @click="goBackTo(i)">{{ c.name }}<text v-if="i < whCascade.length - 1"> ›</text></text>
+        </view>
+        <scroll-view scroll-y class="picker-list">
+          <view v-for="item in whOptions" :key="item.id" class="picker-item" @click="selectWhLevel(item)">
+            <text :style="{ fontWeight: item.children?.length ? 'bold' : 'normal' }">{{ item.name }}</text>
+            <text style="font-size:11px;color:#999;margin-left:4px;">{{ item.level }}级</text>
+            <text v-if="item.children?.length" style="margin-left:auto;color:#ccc;">›</text>
+          </view>
+          <view v-if="!whOptions.length" style="text-align:center;padding:30px 0;color:#999;">无下级仓库</view>
+        </scroll-view>
+      </view>
     </view>
 
     <view v-if="loading" class="loading">加载中...</view>
@@ -101,4 +157,14 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 .search-btn { background: linear-gradient(135deg,#2e7d32,#43a047); color:#fff; border-radius:10px; padding:0 18px; font-size:13px; display:flex; align-items:center; white-space:nowrap; box-shadow:0 2px 8px rgba(46,125,50,0.2); }
 .type-dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
 .reset-btn { background: #f5f5f5; color: #666; border-radius: 10px; padding: 0 16px; font-size: 13px; display: flex; align-items: center; white-space: nowrap; }
+.filter-picker { background:#fff; border-radius:10px; padding:0 14px; font-size:13px; display:flex; align-items:center; white-space:nowrap; box-shadow:0 1px 4px rgba(0,0,0,0.04); color:#666; }
+.filter-picker.on { background:#e8f5e9; color:#2e7d32; font-weight:600; }
+.picker-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; display: flex; align-items: flex-end; }
+.picker-modal { background: #fff; border-radius: 16px 16px 0 0; width: 100%; max-height: 70vh; display: flex; flex-direction: column; }
+.picker-header { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #eee; }
+.picker-cancel { color: #666; font-size: 14px; }
+.wh-breadcrumb { display: flex; flex-wrap: wrap; gap: 4px; padding: 10px 16px; background: #f5f7fa; font-size: 13px; }
+.wh-crumb { color: #2e7d32; }
+.picker-list { padding: 0 16px 20px; max-height: 55vh; overflow-y: auto; }
+.picker-item { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid #f5f5f5; }
 </style>
