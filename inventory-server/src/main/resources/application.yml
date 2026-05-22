@@ -10,8 +10,8 @@ spring:
     name: inventory-server
   datasource:
     url: jdbc:mysql://${MYSQL_ADDR:localhost}:3306/inventory?useUnicode=true&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai&nullCatalogMeansCurrent=true
-    username: root
-    password: 123456
+    username: ${DB_USERNAME:root}
+    password: ${DB_PASSWORD:123456}
     driver-class-name: com.mysql.cj.jdbc.Driver
 mybatis-plus:
   mapper-locations: classpath:mapper/**/*.xml
@@ -30,7 +30,7 @@ mybatis-plus:
 sa-token:
   token-name: Authorization
   token-prefix: Bearer
-  jwt-secret-key: inventory-system-jwt-secret-key-2024
+  jwt-secret-key: ${JWT_SECRET:inventory-system-jwt-secret-key-2024}
   token-style: uuid
   is-log: true
   is-read-body: false

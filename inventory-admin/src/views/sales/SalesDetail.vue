@@ -9,7 +9,7 @@ import { useUserStore } from '../../store/user'
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
-const order = ref<SalesOrder | null>(null)
+const order = ref<any>(null)
 const userStore = useUserStore()
 const statusMap: Record<number, { label: string; type: string }> = {
   0: { label: '草稿', type: 'info' }, 1: { label: '已出库', type: 'success' }, 2: { label: '已取消', type: 'danger' },

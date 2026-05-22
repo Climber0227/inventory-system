@@ -229,7 +229,7 @@ watch(() => form.outWarehouseId, async (whId) => {
       <el-table :data="form.items" border stripe>
         <el-table-column label="商品" min-width="140">
           <template #default="{ $index }">
-            <el-select v-model="form.items[$index].productId" filterable placeholder="选择商品" style="width:100%" @change="(val) => onProductSelect(val, $index)">
+            <el-select v-model="form.items[$index].productId" filterable placeholder="选择商品" style="width:100%" @change="(val: any) => onProductSelect(val, $index)">
               <el-option v-for="p in products" :key="p.id" :value="p.id" :label="p.name + ' (' + p.code + ')'">
                 <span style="display:flex;justify-content:space-between;width:100%;">
                   <span>{{ p.name }} ({{ p.code }})</span>

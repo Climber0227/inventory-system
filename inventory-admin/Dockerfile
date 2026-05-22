@@ -4,7 +4,7 @@ WORKDIR /build
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npx vite build
+RUN npm run build
 
 # ===== 运行阶段 =====
 FROM nginx:alpine
