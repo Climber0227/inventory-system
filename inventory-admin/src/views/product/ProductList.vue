@@ -428,7 +428,7 @@ onMounted(async () => { const r = await request.get('/warehouse/tree'); warehous
             :limit="1"
           >
             <el-button size="small" type="primary">点击上传</el-button>
-            <template #tip><div style="font-size:12px;color:#999">建议尺寸 200x200，不超过 5MB</div></template>
+            <template #tip><div style="font-size:12px;color:#999">建议尺寸 200x200，不超过 10MB</div></template>
           </el-upload>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
