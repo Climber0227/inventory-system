@@ -2,7 +2,7 @@
 import { ref, onMounted, reactive, watch } from 'vue'
 import request, { downloadFile } from '../../api/request'
 import type { Product, PageResult, PageParams } from '../../types/api'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElForm } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../store/user'
 

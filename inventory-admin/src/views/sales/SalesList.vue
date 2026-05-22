@@ -42,13 +42,14 @@ function handleReset() { query.orderNo = ''; query.customerId = undefined; query
 async function handleCancel(row: SalesOrder) { await request.put(`/sales-order/${row.id}/cancel`); ElMessage.success('已取消'); fetchData() }
 async function handleDelete(row: SalesOrder) {
   try {
-    const { value } = await ElMessageBox.prompt(`确定作废出库单「${row.orderNo}」？`, '作废确认', {
+    const { value } = await ElMessageBox.prompt(`确定作废出库单「${row.orderNo}」？`, {
+      title: '作废确认',
       confirmButtonText: '确定作废',
       cancelButtonText: '取消',
       inputPlaceholder: '请填写作废原因（必填）',
       inputValidator: (val: string) => !!val.trim(),
       inputErrorMessage: '作废原因不能为空',
-      type: 'danger',
+      type: 'error',
     })
     await request.put(`/sales-order/${row.id}/void`, { reason: value })
     ElMessage.success('已作废'); fetchData()
@@ -56,14 +57,15 @@ async function handleDelete(row: SalesOrder) {
 }
 async function handleApprove(row: SalesOrder) {
   try {
-    await ElMessageBox.confirm(`确认审核通过出库单「${row.orderNo}」？通过后将扣减库存。`, '审核确认', { type: 'info' })
+    await ElMessageBox.confirm(`确认审核通过出库单「${row.orderNo}」？通过后将扣减库存。`, { title: '审核确认', type: 'info' })
   } catch { return }
   await request.put(`/sales-order/${row.id}/approve`)
   ElMessage.success('已审核通过'); fetchData()
 }
 async function handleReject(row: SalesOrder) {
   try {
-    const { value } = await ElMessageBox.prompt(`确定驳回出库单「${row.orderNo}」？`, '驳回', {
+    const { value } = await ElMessageBox.prompt(`确定驳回出库单「${row.orderNo}」？`, {
+      title: '驳回',
       inputPlaceholder: '请填写驳回原因（必填）',
       inputValidator: (val: string) => !!val.trim(),
       inputErrorMessage: '驳回原因不能为空',
@@ -75,13 +77,14 @@ async function handleReject(row: SalesOrder) {
 }
 async function handleBatchDelete() {
   try {
-    const { value } = await ElMessageBox.prompt(`确定作废选中的 ${selectedIds.value.length} 个出库单？`, '批量作废确认', {
+    const { value } = await ElMessageBox.prompt(`确定作废选中的 ${selectedIds.value.length} 个出库单？`, {
+      title: '批量作废确认',
       confirmButtonText: '确定作废',
       cancelButtonText: '取消',
       inputPlaceholder: '请填写作废原因（必填）',
       inputValidator: (val: string) => !!val.trim(),
       inputErrorMessage: '作废原因不能为空',
-      type: 'danger',
+      type: 'error',
     })
     await request.put('/sales-order/batch-void', { ids: selectedIds.value, reason: value })
     ElMessage.success('已作废'); selectedIds.value = []; fetchData()

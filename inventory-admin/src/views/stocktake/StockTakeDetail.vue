@@ -8,7 +8,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
-const order = ref<StockTake | null>(null)
+const order = ref<any>(null)
 const products = ref<any[]>([])
 const warehouseStock = ref<Record<number, number>>({})
 const editing = ref(false)
@@ -36,10 +36,10 @@ async function handleAddItem() {
   if (!order.value || !addProductId.value) { ElMessage.warning('请选择商品'); return }
 
   // 检查是否已添加该商品
-  const exists = order.value.items?.some(item => item.productId === addProductId.value)
+  const exists = order.value.items?.some((item: any) => item.productId === addProductId.value)
   if (exists) {
     try {
-      await ElMessageBox.confirm('该商品已在盘点明细中，确定再次添加？', '重复商品', { type: 'warning' })
+      await ElMessageBox.confirm('该商品已在盘点明细中，确定再次添加？', { title: '重复商品', type: 'warning' })
     } catch {
       return // 用户取消
     }
