@@ -3,6 +3,8 @@ import { ref, onMounted } from 'vue'
 import request from '../../api/request'
 import type { Category } from '../../types/api'
 import { ElMessage, ElMessageBox, ElForm } from 'element-plus'
+import { useUserStore } from '../../store/user'
+const userStore = useUserStore()
 
 const loading = ref(false)
 const categories = ref<Category[]>([])
@@ -64,7 +66,7 @@ onMounted(fetchTree)
   <div>
     <div class="page-header">
       <h2>商品分类</h2>
-      <el-button type="primary" @click="openCreate(null)">新增根分类</el-button>
+      <el-button v-if="userStore.isAdmin" type="primary" @click="openCreate(null)">新增根分类</el-button>
     </div>
 
     <div class="table-container">
@@ -79,9 +81,9 @@ onMounted(fetchTree)
         <el-table-column prop="sort" label="排序" width="80" />
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="openCreate(row.id)">+ 子分类</el-button>
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row.id)">作废</el-button>
+            <el-button v-if="userStore.isAdmin" size="small" @click="openCreate(row.id)">+ 子分类</el-button>
+            <el-button v-if="userStore.isAdmin" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button v-if="userStore.isAdmin" size="small" type="danger" @click="handleDelete(row.id)">作废</el-button>
           </template>
         </el-table-column>
       </el-table>
