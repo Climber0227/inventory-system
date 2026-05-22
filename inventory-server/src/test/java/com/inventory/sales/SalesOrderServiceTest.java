@@ -12,6 +12,7 @@ import com.inventory.sales.mapper.SalesOrderItemMapper;
 import com.inventory.sales.mapper.SalesOrderMapper;
 import com.inventory.sales.service.SalesOrderService;
 import com.inventory.customer.mapper.CustomerMapper;
+import com.inventory.system.entity.SysUser;
 import com.inventory.system.mapper.SysUserMapper;
 import com.inventory.warehouse.mapper.WarehouseMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -148,7 +149,12 @@ class SalesOrderServiceTest {
 
         when(inventoryMapper.selectOne(any())).thenReturn(inv);
 
-        service.cancel(1L);
+        SysUser admin = new SysUser(); admin.setRole(1);
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsLong).thenReturn(1L);
+            when(userMapper.selectById(1L)).thenReturn(admin);
+            service.cancel(1L);
+        }
 
         verify(inventoryMapper).updateById(argThat(i -> i.getQuantity() == 100));
     }
