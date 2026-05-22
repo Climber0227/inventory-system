@@ -22,7 +22,6 @@ services:
     depends_on:
       - mysql
     environment:
-      SPRING_DATASOURCE_URL: "jdbc:mysql://mysql:3306/inventory?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&nullCatalogMeansCurrent=true"
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root123
       SPRING_JPA_HIBERNATE_DDL_AUTO: none
