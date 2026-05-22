@@ -6,6 +6,7 @@ import com.inventory.inventory.entity.Inventory;
 import com.inventory.inventory.mapper.InventoryLogMapper;
 import com.inventory.inventory.mapper.InventoryMapper;
 import com.inventory.product.mapper.ProductMapper;
+import com.inventory.system.entity.SysUser;
 import com.inventory.system.mapper.SysUserMapper;
 import com.inventory.transfer.entity.InventoryTransfer;
 import com.inventory.transfer.entity.InventoryTransferItem;
@@ -153,7 +154,12 @@ class TransferServiceTest {
 
         when(inventoryMapper.selectOne(any())).thenReturn(dest, src);
 
-        service.cancel(1L);
+        SysUser admin = new SysUser(); admin.setRole(1);
+        try (MockedStatic<StpUtil> stp = mockStatic(StpUtil.class)) {
+            stp.when(StpUtil::getLoginIdAsLong).thenReturn(1L);
+            when(userMapper.selectById(1L)).thenReturn(admin);
+            service.cancel(1L);
+        }
 
         verify(inventoryMapper).updateById(argThat(i -> i.getId() == 2L && i.getQuantity() == 0));
         verify(inventoryMapper).updateById(argThat(i -> i.getId() == 1L && i.getQuantity() == 50));
