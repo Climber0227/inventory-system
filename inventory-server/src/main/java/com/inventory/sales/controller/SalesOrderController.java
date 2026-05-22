@@ -102,6 +102,7 @@ public class SalesOrderController {
         return R.ok();
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "导出销售订单")
     @GetMapping("/export")
     public void export(HttpServletResponse response,

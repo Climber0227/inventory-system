@@ -90,6 +90,7 @@ public class PurchaseOrderController {
         return R.ok();
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "导出采购订单")
     @GetMapping("/export")
     public void export(HttpServletResponse response,

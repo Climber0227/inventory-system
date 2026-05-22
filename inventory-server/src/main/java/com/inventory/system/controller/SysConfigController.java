@@ -1,5 +1,6 @@
 package com.inventory.system.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.inventory.common.result.R;
 import com.inventory.system.entity.SysConfig;
 import com.inventory.system.service.SysConfigService;
@@ -24,6 +25,7 @@ public class SysConfigController {
         return R.ok(sysConfigService.list());
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "更新配置")
     @PutMapping("/{id}")
     public R<Void> update(@PathVariable Long id, @RequestBody SysConfig config) {
