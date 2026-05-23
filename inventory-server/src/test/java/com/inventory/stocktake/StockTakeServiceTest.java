@@ -71,7 +71,7 @@ class StockTakeServiceTest {
 
         service.adjust(1L);
 
-        // 验证：仓库1的库存调整为80
+        // 验证：仓库1的库存调整为80（直接覆盖为实盘数）
         verify(inventoryMapper).updateById(argThat(inv ->
                 inv.getId() == 1L && inv.getQuantity() == 80));
 

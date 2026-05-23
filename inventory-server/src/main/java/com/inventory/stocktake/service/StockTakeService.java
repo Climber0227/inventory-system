@@ -314,7 +314,7 @@ public class StockTakeService {
 
             // 更新库存：直接设第一个库存记录的数量为目标值
             if (!invList.isEmpty()) {
-                invList.get(0).setQuantity(item.getActualQty());
+                invList.get(0).setQuantity(totalQty + item.getDiffQty());
                 inventoryMapper.updateById(invList.get(0));
                 // 多余批次清零
                 for (int i = 1; i < invList.size(); i++) {
