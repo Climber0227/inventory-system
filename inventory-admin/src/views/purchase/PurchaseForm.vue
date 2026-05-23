@@ -290,7 +290,8 @@ onMounted(async () => {
         <el-table-column label="金额" width="180">
           <template #default="{ $index }">¥{{ (form.items[$index].amount ?? 0).toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column label="批次号" width="140">
+        <!-- 批次号已禁用，入库统一合并到现有库存 -->
+        <el-table-column label="批次号" width="140" v-if="false">
           <template #default="{ $index }"><el-input v-model="form.items[$index].batchNo" size="small" /></template>
         </el-table-column>
         <el-table-column label="生产日期" width="140">
