@@ -312,28 +312,34 @@ public class StockTakeService {
                 inventoryLogMapper.insert(log);
             }
 
-            // 更新库存：按比例分配到各批次
+            // 更新库存：差异增量，新增则创建批次，减少则从各批次依次扣减
             if (!invList.isEmpty()) {
-                if (totalQty == 0) {
-                    // 库存全为零时平均分配
-                    int each = item.getActualQty() / invList.size();
-                    for (int i = 0; i < invList.size(); i++) {
-                        invList.get(i).setQuantity(i == 0 ? item.getActualQty() - each * (invList.size() - 1) : each);
-                        inventoryMapper.updateById(invList.get(i));
+                if (diff > 0) {
+                    // 库存增加：创建新批次记录增量
+                    Inventory newInv = new Inventory();
+                    newInv.setProductId(item.getProductId());
+                    newInv.setWarehouseId(stockTake.getWarehouseId());
+                    newInv.setQuantity(diff);
+                    newInv.setBatchNo("PD-" + stockTake.getOrderNo());
+                    if (!invList.isEmpty()) {
+                        newInv.setCostPrice(invList.get(0).getCostPrice());
                     }
-                } else {
-                    // 按各批次占比分配实盘数量
-                    int remaining = item.getActualQty();
-                    for (int i = 0; i < invList.size(); i++) {
-                        int qty = i < invList.size() - 1
-                                ? (int) Math.round((double) invList.get(i).getQuantity() / totalQty * item.getActualQty())
-                                : remaining;
-                        if (qty < 0) qty = 0;
-                        invList.get(i).setQuantity(qty);
-                        remaining -= qty;
-                        inventoryMapper.updateById(invList.get(i));
+                    inventoryMapper.insert(newInv);
+                } else if (diff < 0) {
+                    // 库存减少：从各批次依次扣减
+                    int toRemove = -diff;
+                    for (Inventory inv : invList) {
+                        int reduce = Math.min(toRemove, inv.getQuantity());
+                        toRemove -= reduce;
+                        inv.setQuantity(inv.getQuantity() - reduce);
+                        inventoryMapper.updateById(inv);
+                        if (toRemove == 0) break;
+                    }
+                    if (toRemove > 0) {
+                        throw new BusinessException("库存不足，无法完成调整");
                     }
                 }
+                // diff == 0 已经在上面 continue 了，不会到这里
             } else {
                 Inventory inv = new Inventory();
                 inv.setProductId(item.getProductId());
