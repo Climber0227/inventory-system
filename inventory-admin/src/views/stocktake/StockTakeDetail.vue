@@ -159,7 +159,7 @@ onMounted(() => { fetchDetail().then(() => fetchProducts()) })
       <el-table :data="order.items || []" border stripe>
         <el-table-column prop="productName" label="商品" min-width="160" />
         <el-table-column prop="productCode" label="编码" width="110" />
-        <el-table-column prop="batchNo" label="批次" width="120" />
+        <!-- <el-table-column prop="batchNo" label="批次" width="120" /> -->
         <el-table-column prop="bookQty" label="账面数" width="80" />
         <el-table-column label="实盘数" width="100">
           <template #default="{ row }">

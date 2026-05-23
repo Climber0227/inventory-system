@@ -97,7 +97,7 @@ onMounted(fetchDetail)
         <el-table-column prop="amount" label="金额" width="100">
           <template #default="{ row }">¥{{ row.amount?.toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column prop="batchNo" label="批次号" width="140" />
+        <!-- <el-table-column prop="batchNo" label="批次号" width="140" /> -->
       </el-table>
     </div>
   </div>

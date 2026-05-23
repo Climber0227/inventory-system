@@ -117,7 +117,7 @@ async function cancelOrder() {
               <view style="flex:1;">
                 <text style="font-weight:600;font-size:14px;color:#1a1a1a;display:block;">{{ item.productName || '-' }}</text>
                 <text style="font-size:12px;color:#999;margin-top:2px;display:block;">
-                  编码: {{ item.productCode }}　|　批次: {{ item.batchNo || '-' }}
+                  编码: {{ item.productCode }}
                 </text>
               </view>
               <view style="text-align:right;">

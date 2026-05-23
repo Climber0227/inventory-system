@@ -259,7 +259,7 @@ async function handleSubmit() {
         </view>
         <view class="item-row">
           <view class="item-field"><text class="label-sm">数量</text><input v-model="item.quantity" class="input-sm" type="number" /></view>
-          <view class="item-field"><text class="label-sm">批次号</text><input v-model="item.batchNo" class="input-sm" placeholder="选填" /></view>
+          <!-- 批次已禁用 -->
         </view>
       </view>
     </view>

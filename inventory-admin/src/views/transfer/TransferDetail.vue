@@ -98,7 +98,7 @@ onMounted(fetchDetail)
       <el-table :data="order.items" border stripe>
         <el-table-column prop="productName" label="商品名称" min-width="180" />
         <el-table-column prop="quantity" label="数量" width="80" />
-        <el-table-column prop="batchNo" label="批次号" width="140" />
+        <!-- <el-table-column prop="batchNo" label="批次号" width="140" /> -->
       </el-table>
     </div>
   </div>
