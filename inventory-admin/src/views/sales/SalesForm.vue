@@ -300,7 +300,8 @@ onMounted(async () => {
         <el-table-column label="金额" width="180">
           <template #default="{ $index }">¥{{ (form.items[$index].amount ?? 0).toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column label="批次/库存" width="200">
+        <!-- 批次已禁用 -->
+        <!-- <el-table-column label="批次/库存" width="200">
           <template #default="{ $index }">
             <el-select v-model="form.items[$index].batchNo" filterable allow-create clearable placeholder="自动FIFO" style="width:100%">
               <el-option
@@ -311,7 +312,7 @@ onMounted(async () => {
               />
             </el-select>
           </template>
-        </el-table-column>
+        </el-table-column> -->
         <el-table-column label="操作" width="80" fixed="right">
           <template #default="{ $index }"><el-button size="small" type="danger" @click="removeItem($index)">删除</el-button></template>
         </el-table-column>

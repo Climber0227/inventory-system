@@ -153,7 +153,7 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
           <el-table :data="invByWarehouse.get(node.id) || []" stripe border size="small">
             <el-table-column prop="productCode" label="编码" width="100" />
             <el-table-column prop="productName" label="商品" min-width="130" />
-            <el-table-column prop="batchNo" label="批次" width="80" />
+            <!-- <el-table-column prop="batchNo" label="批次" width="80" /> -->
             <el-table-column prop="quantity" label="数量" width="70" align="center">
               <template #default="{ row }"><span style="font-weight:600;">{{ row.quantity }}</span></template>
             </el-table-column>

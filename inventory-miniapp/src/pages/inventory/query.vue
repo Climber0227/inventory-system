@@ -207,7 +207,7 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
           <view class="inv-row">
             <view class="inv-info">
               <text class="inv-qty" :class="{ low: (inv.quantity || 0) <= 5 }">{{ inv.quantity }}</text>
-              <text>批次: {{ inv.batchNo || '-' }}</text>
+              <!-- 批次已禁用 -->
             </view>
             <text>仓码: {{ inv.warehouseCode || '-' }}</text>
             <text>均价 ¥{{ (inv.costPrice || 0).toFixed(2) }}</text>
@@ -245,7 +245,7 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
                 <text class="inv-qty" :class="{ low: (inv.quantity || 0) <= 5 }">{{ inv.quantity }}</text>
               </view>
               <view class="inv-footer">
-                <text>批次: {{ inv.batchNo || '-' }}</text>
+                <!-- 批次已禁用 -->
                 <text>仓码: {{ inv.warehouseCode || '-' }}</text>
                 <text>均价 ¥{{ (inv.costPrice || 0).toFixed(2) }}</text>
                 <text>¥{{ ((inv.costPrice || 0) * (inv.quantity || 0)).toFixed(2) }}</text>

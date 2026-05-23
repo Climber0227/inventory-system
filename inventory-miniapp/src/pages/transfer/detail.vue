@@ -76,7 +76,7 @@ async function cancelOrder() {
         <text class="pl-title">商品明细</text>
         <view v-if="order.items && order.items.length">
           <view class="pi" v-for="item in order.items" :key="item.id">
-            <view><text class="pi-name">{{ item.productName || '-' }}</text><text class="pi-detail">数量: {{ item.quantity }}  批次: {{ item.batchNo || '-' }}</text></view>
+            <view><text class="pi-name">{{ item.productName || '-' }}</text><text class="pi-detail">数量: {{ item.quantity }}</text></view>
           </view>
         </view>
         <view v-else style="text-align:center;color:#999;padding:20px;">暂无明细</view>
