@@ -270,7 +270,8 @@ public class SalesOrderService {
                 LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
                         .eq(Inventory::getProductId, item.getProductId())
                         .eq(Inventory::getWarehouseId, order.getWarehouseId())
-                        .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo());
+                        .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo())
+                        .last("LIMIT 1");
                 Inventory inv = inventoryMapper.selectOne(wrapper);
                 if (inv != null) {
                     int beforeQty = inv.getQuantity();
