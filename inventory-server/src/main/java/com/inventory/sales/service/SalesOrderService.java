@@ -246,6 +246,7 @@ public class SalesOrderService {
         SalesOrder order = salesOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("销售单不存在");
         if (order.getStatus() == OrderStatus.CANCELED) throw new BusinessException("销售单已取消");
+        if (order.getStatus() == OrderStatus.VOIDED) throw new BusinessException("已作废的单据不可取消");
         if (order.getStatus() == OrderStatus.PENDING) {
             long uid = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
             var u = userMapper.selectById(uid);
