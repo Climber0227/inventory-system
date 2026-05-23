@@ -304,6 +304,7 @@ public class PurchaseOrderService {
         PurchaseOrder order = purchaseOrderMapper.selectById(id);
         if (order == null) throw new BusinessException("采购单不存在");
         if (order.getStatus() == OrderStatus.CANCELED) throw new BusinessException("采购单已取消");
+        if (order.getStatus() == OrderStatus.VOIDED) throw new BusinessException("已作废的单据不可取消");
 
         if (order.getStatus() == OrderStatus.PENDING) {
             // 待审批状态仅管理员可取消

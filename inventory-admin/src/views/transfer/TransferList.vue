@@ -167,7 +167,7 @@ onMounted(async () => {
             <el-button v-if="userStore.isAdmin && row.status === 4" size="small" type="success" @click="handleApprove(row)">通过</el-button>
             <el-button v-if="userStore.isAdmin && row.status === 4" size="small" type="warning" @click="handleReject(row)">驳回</el-button>
             <el-button v-if="row.status === 0" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
-            <el-button v-if="userStore.isAdmin" size="small" type="danger" @click="handleDelete(row)">作废</el-button>
+            <el-button v-if="userStore.isAdmin && (row.status === 0 || row.status === 2)" size="small" type="danger" @click="handleDelete(row)">作废</el-button>
           </template>
         </el-table-column>
       </el-table>

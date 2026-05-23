@@ -394,6 +394,7 @@ public class TransferService {
     public void delete(Long id) {
         InventoryTransfer transfer = transferMapper.selectById(id);
         if (transfer == null) throw new BusinessException("调拨单不存在");
+        if (transfer.getStatus() == OrderStatus.CONFIRMED) throw new BusinessException("已完成调拨单不可作废");
         transfer.setStatus(OrderStatus.VOIDED);
         transferMapper.updateById(transfer);
     }
@@ -432,6 +433,7 @@ public class TransferService {
         InventoryTransfer transfer = transferMapper.selectById(id);
         if (transfer == null) throw new BusinessException("调拨单不存在");
         if (transfer.getStatus() == OrderStatus.CANCELED) throw new BusinessException("调拨单已取消");
+        if (transfer.getStatus() == OrderStatus.VOIDED) throw new BusinessException("已作废的单据不可取消");
 
         if (transfer.getStatus() == OrderStatus.PENDING) {
             long uid = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
