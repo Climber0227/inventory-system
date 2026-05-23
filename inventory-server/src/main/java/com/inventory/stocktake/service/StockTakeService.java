@@ -312,14 +312,27 @@ public class StockTakeService {
                 inventoryLogMapper.insert(log);
             }
 
-            // 更新库存：直接设第一个库存记录的数量为目标值
+            // 更新库存：按比例分配到各批次
             if (!invList.isEmpty()) {
-                invList.get(0).setQuantity(totalQty + item.getDiffQty());
-                inventoryMapper.updateById(invList.get(0));
-                // 多余批次清零
-                for (int i = 1; i < invList.size(); i++) {
-                    invList.get(i).setQuantity(0);
-                    inventoryMapper.updateById(invList.get(i));
+                if (totalQty == 0) {
+                    // 库存全为零时平均分配
+                    int each = item.getActualQty() / invList.size();
+                    for (int i = 0; i < invList.size(); i++) {
+                        invList.get(i).setQuantity(i == 0 ? item.getActualQty() - each * (invList.size() - 1) : each);
+                        inventoryMapper.updateById(invList.get(i));
+                    }
+                } else {
+                    // 按各批次占比分配实盘数量
+                    int remaining = item.getActualQty();
+                    for (int i = 0; i < invList.size(); i++) {
+                        int qty = i < invList.size() - 1
+                                ? (int) Math.round((double) invList.get(i).getQuantity() / totalQty * item.getActualQty())
+                                : remaining;
+                        if (qty < 0) qty = 0;
+                        invList.get(i).setQuantity(qty);
+                        remaining -= qty;
+                        inventoryMapper.updateById(invList.get(i));
+                    }
                 }
             } else {
                 Inventory inv = new Inventory();
