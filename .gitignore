@@ -41,3 +41,6 @@ uploads/
 
 # Worktrees
 .worktrees/
+
+# Documentation (not for production)
+docs/
