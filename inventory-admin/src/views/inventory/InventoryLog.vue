@@ -50,8 +50,8 @@ async function fetchWarehouseTree() {
   } catch { /* ignore */ }
 }
 
-function onWarehouseChange(val: number | undefined) {
-  query.warehouseId = val
+function onWarehouseChange(val: any) {
+  query.warehouseId = val ?? undefined
   handleSearch()
 }
 
@@ -76,10 +76,10 @@ onMounted(() => {
     <div class="search-bar">
       <el-input v-model="query.productName" placeholder="商品名称" clearable style="width:160px"
         @keyup.enter="handleSearch" @clear="handleSearch" />
-      <el-cascader
+      <el-tree-select
         v-model="query.warehouseId"
-        :options="warehouseTree"
-        :props="{ value: 'id', label: 'name', children: 'children', emitPath: false, checkStrictly: true }"
+        :data="warehouseTree"
+        :props="{ value: 'id', label: 'name', children: 'children' }"
         placeholder="仓库"
         clearable
         style="width:180px"

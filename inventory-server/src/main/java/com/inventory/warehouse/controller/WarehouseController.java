@@ -65,7 +65,7 @@ public class WarehouseController {
     }
 
     @Operation(summary = "获取仓库详情")
-    @GetMapping("/{id}")
+    @GetMapping("/detail/{id}")
     public R<Warehouse> getById(@PathVariable Long id) {
         return R.ok(warehouseService.getById(id));
     }
