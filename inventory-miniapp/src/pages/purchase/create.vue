@@ -290,12 +290,12 @@ async function handleSubmit() {
         <scroll-view scroll-y class="picker-list">
           <view v-for="p in filteredProducts" :key="p.id" class="picker-item" @click="selectProduct(p)">
             <view style="flex:1;overflow:hidden;">
-              <text style="font-size:14px;font-weight:500;">{{ p.name }}</text>
-              <text style="font-size:11px;color:#999;margin-left:4px;">{{ p.code }}</text>
-              <text style="font-size:11px;color:#666;display:block;">{{ p.spec || '-' }} | 采购价 ¥{{ p.purchasePrice }}</text>
-            </view>
-            <view class="stock-badge" :class="{ 'has-stock': (warehouseStock[p.id] || 0) > 0 }">
-              库存 {{ warehouseStock[p.id] ?? '-' }}
+              <view style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }}</view>
+              <text style="font-size:11px;color:#999;">{{ p.code }} | {{ p.spec || '-' }}</text>
+              <text style="font-size:11px;color:#666;display:block;">
+                采购价 ¥{{ p.purchasePrice }}
+                <text class="stock-text" :class="{ 'has-stock': (warehouseStock[p.id] || 0) > 0 }"> | 库存 {{ warehouseStock[p.id] ?? '-' }}</text>
+              </text>
             </view>
           </view>
           <view v-if="filteredProducts.length === 0" style="text-align:center;padding:20px;color:#999;">无匹配商品</view>
@@ -348,8 +348,8 @@ async function handleSubmit() {
 .picker-search .search-input {
   border: 1px solid #dcdfe6; border-radius: 4px; padding: 10px 12px; }
 .picker-list { padding: 0 16px 20px; max-height: 55vh; overflow-y: auto; }
-.picker-item { display: flex; align-items: center; gap: 8px; padding: 12px 0; border-bottom: 1px solid #f5f5f5; }
+.picker-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #f5f5f5; }
 .picker-item:active { background: #f5f7f5; }
-.stock-badge { font-size: 11px; padding: 3px 8px; border-radius: 4px; background: #f5f5f5; color: #999; white-space: nowrap; flex-shrink: 0; }
-.stock-badge.has-stock { background: #e8f5e9; color: #2e7d32; }
+.stock-text { color: #999; }
+.stock-text.has-stock { color: #2e7d32; font-weight:500; }
 </style>

@@ -7,6 +7,7 @@ import com.inventory.common.result.R;
 import com.inventory.common.util.ExcelUtil;
 import com.inventory.warehouse.entity.Warehouse;
 import com.inventory.warehouse.entity.WarehouseExportVO;
+import com.inventory.warehouse.entity.WarehouseImportVO;
 import com.inventory.warehouse.service.WarehouseService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -14,7 +15,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Tag(name = "仓库管理")
@@ -95,22 +96,70 @@ public class WarehouseController {
         return R.ok();
     }
 
+    @Operation(summary = "下载导入模板")
+    @GetMapping("/import/template")
+    public void importTemplate(HttpServletResponse response) {
+        ExcelUtil.export(response, java.util.Collections.emptyList(), "仓库导入模板", WarehouseImportVO.class);
+    }
+
     @Operation(summary = "导出仓库")
     @GetMapping("/export")
     public void export(HttpServletResponse response) {
-        List<Warehouse> list = warehouseService.listAll();
-        List<WarehouseExportVO> voList = list.stream().map(s -> {
+        List<Warehouse> all = warehouseService.exportAll();
+        // 构建 ID → 仓库 映射，用于向上追溯父级
+        Map<Long, Warehouse> map = all.stream().collect(Collectors.toMap(Warehouse::getId, w -> w));
+        List<WarehouseExportVO> voList = all.stream().map(w -> {
             WarehouseExportVO vo = new WarehouseExportVO();
-            vo.setCode(s.getCode()); vo.setName(s.getName()); vo.setContact(s.getContact());
-            vo.setPhone(s.getPhone()); vo.setAddress(s.getAddress());
-            vo.setStatus(s.getStatus() != null && s.getStatus() == 1 ? "启用" : "停用");
-            if (s.getProductCount() != null) vo.setProductCount(s.getProductCount());
-            if (s.getTotalAmount() != null) vo.setTotalAmount(s.getTotalAmount());
-            if (s.getCreateTime() != null) vo.setCreateTime(s.getCreateTime());
-            if (s.getUpdateTime() != null) vo.setUpdateTime(s.getUpdateTime());
+            vo.setContact(w.getContact());
+            vo.setPhone(w.getPhone());
+            vo.setAddress(w.getAddress());
+            vo.setCode(w.getCode());
+            vo.setStatus(w.getStatus() != null && w.getStatus() == 1 ? "启用" : "停用");
+            // 按层级填充 一级~四级
+            switch (w.getLevel() != null ? w.getLevel() : 1) {
+                case 4: vo.setLevel4Name(w.getName());
+                    Warehouse p3 = map.get(w.getParentId());
+                    if (p3 != null) {
+                        vo.setLevel3Name(p3.getName());
+                        Warehouse p2 = map.get(p3.getParentId());
+                        if (p2 != null) {
+                            vo.setLevel2Name(p2.getName());
+                            Warehouse p1 = map.get(p2.getParentId());
+                            if (p1 != null) vo.setLevel1Name(p1.getName());
+                        }
+                    }
+                    break;
+                case 3: vo.setLevel3Name(w.getName());
+                    Warehouse p2 = map.get(w.getParentId());
+                    if (p2 != null) {
+                        vo.setLevel2Name(p2.getName());
+                        Warehouse p1 = map.get(p2.getParentId());
+                        if (p1 != null) vo.setLevel1Name(p1.getName());
+                    }
+                    break;
+                case 2: vo.setLevel2Name(w.getName());
+                    Warehouse p1 = map.get(w.getParentId());
+                    if (p1 != null) vo.setLevel1Name(p1.getName());
+                    break;
+                default: vo.setLevel1Name(w.getName()); break;
+            }
             return vo;
         }).collect(Collectors.toList());
         ExcelUtil.export(response, voList, "仓库列表", WarehouseExportVO.class);
+    }
+
+    @SaCheckRole("role_1")
+    @Operation(summary = "导入仓库")
+    @PostMapping("/import")
+    public R<String> importExcel(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        try {
+            List<WarehouseImportVO> rows = com.alibaba.excel.EasyExcel.read(file.getInputStream())
+                    .head(WarehouseImportVO.class).sheet().doReadSync();
+            int count = warehouseService.importExcel(rows);
+            return R.ok("导入成功，共创建 " + count + " 个仓库");
+        } catch (Exception e) {
+            throw new com.inventory.common.exception.BusinessException("导入失败: " + e.getMessage());
+        }
     }
 
     @SaCheckRole("role_1")

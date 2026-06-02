@@ -106,6 +106,21 @@ async function handleDelete(row: any) {
 }
 function handleExport() { downloadFile('/warehouse/export', '仓库.xlsx') }
 
+const fileInput = ref<HTMLInputElement>()
+async function handleImport() { fileInput.value?.click() }
+async function onFileChange(e: Event) {
+  const files = (e.target as HTMLInputElement).files
+  if (!files?.length) return
+  const formData = new FormData()
+  formData.append('file', files[0])
+  try {
+    const res = await request.post('/warehouse/import', formData)
+    ElMessage.success(res.data.message)
+    fetchTree()
+  } catch { /* handled */ }
+  (e.target as HTMLInputElement).value = ''
+}
+
 function onLevelChange(level: number) {
   form.parentId = undefined
   loadParentCandidates(level)
@@ -119,7 +134,10 @@ onMounted(fetchTree)
     <div class="page-header"><h2>仓库管理</h2>
       <div>
         <el-button type="primary" @click="openCreate()">+ 新增仓库</el-button>
+        <el-button @click="handleImport">导入Excel</el-button>
+        <el-button @click="downloadFile('/warehouse/import/template', '仓库导入模板.xlsx')">下载模板</el-button>
         <el-button @click="handleExport">导出Excel</el-button>
+        <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="onFileChange" />
       </div>
     </div>
 
@@ -149,7 +167,7 @@ onMounted(fetchTree)
             <el-tag :type="['','primary','success','warning','info'][row.level]" size="small" style="margin-left:6px;">{{ row.level }}级</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="code" label="编码" width="140" />
+        <el-table-column prop="code" label="编码" width="200" />
         <el-table-column prop="address" label="地址" width="160" show-overflow-tooltip />
         <el-table-column prop="contact" label="负责人" width="100" />
         <el-table-column prop="phone" label="联系电话" width="140" />
