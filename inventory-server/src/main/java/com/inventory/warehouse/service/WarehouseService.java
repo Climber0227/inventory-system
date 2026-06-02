@@ -18,9 +18,9 @@ import com.inventory.warehouse.mapper.WarehouseMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.inventory.warehouse.entity.WarehouseImportVO;
 import java.math.BigDecimal;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import cn.hutool.core.date.DateUtil;
 import java.util.Date;
@@ -96,6 +96,12 @@ public class WarehouseService {
                 .orderByAsc(Warehouse::getId));
         for (Warehouse w : list) enrichStats(w);
         return list;
+    }
+
+    public List<Warehouse> exportAll() {
+        // 导出全部仓库（按层级显示）
+        return warehouseMapper.selectList(new LambdaQueryWrapper<Warehouse>()
+                .orderByAsc(Warehouse::getLevel, Warehouse::getId));
     }
 
     public Page<Warehouse> page(Page<Warehouse> page, String name, String contact, String phone,
@@ -204,13 +210,13 @@ public class WarehouseService {
         String maxCode = warehouseMapper.selectMaxCodeByPrefix(likePrefix);
         int seq = 1;
         if (maxCode != null) {
-            seq = Integer.parseInt(maxCode.substring(maxCode.length() - 3)) + 1;
+            seq = Integer.parseInt(maxCode.substring(maxCode.length() - 6)) + 1;
         }
 
-        String code = likePrefix + String.format("%03d", seq);
+        String code = likePrefix + String.format("%06d", seq);
         while (warehouseMapper.countAllByCode(code) > 0) {
             seq++;
-            code = likePrefix + String.format("%03d", seq);
+            code = likePrefix + String.format("%06d", seq);
         }
         return code;
     }
@@ -284,5 +290,71 @@ public class WarehouseService {
         if (w == null) throw new BusinessException("仓库不存在");
         w.setDeleted(0);
         warehouseMapper.updateById(w);
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public int importExcel(List<WarehouseImportVO> rows) {
+        // 缓存 key=名称:父级ID → warehouseId，避免重复查库
+        Map<String, Long> cache = new HashMap<>();
+        int created = 0;
+
+        // 先加载已有仓库到缓存
+        List<Warehouse> existing = warehouseMapper.selectList(
+                new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getDeleted, 0));
+        for (Warehouse w : existing) {
+            String key = w.getName() + ":" + (w.getParentId() == null ? 0 : w.getParentId());
+            cache.putIfAbsent(key, w.getId());
+        }
+
+        for (WarehouseImportVO row : rows) {
+            // 逐级处理 一级→二级→三级→四级
+            Long parentId = null;
+            int level = 0;
+            String[] names = { row.getLevel1Name(), row.getLevel2Name(),
+                               row.getLevel3Name(), row.getLevel4Name() };
+
+            for (int i = 0; i < names.length; i++) {
+                String name = names[i];
+                if (name == null || name.trim().isEmpty()) break;
+                name = name.trim();
+                level = i + 1;
+
+                String cacheKey = name + ":" + (parentId == null ? 0 : parentId);
+                Long existedId = cache.get(cacheKey);
+
+                if (existedId != null) {
+                    parentId = existedId;
+                    continue;
+                }
+
+                // 创建新仓库
+                Warehouse w = new Warehouse();
+                w.setName(name);
+                w.setParentId(parentId);
+                w.setLevel(level);
+                // 最后一级（叶子）才设置状态/联系人/电话/地址
+                boolean isLast = (i == names.length - 1) || (i + 1 < names.length &&
+                        (names[i + 1] == null || names[i + 1].trim().isEmpty()));
+                if (isLast) {
+                    // 状态：空/启用/停用 → 1/1/0
+                    String statusStr = row.getStatus();
+                    w.setStatus("停用".equals(statusStr) ? 0 : 1);
+                    w.setContact(row.getContact());
+                    w.setPhone(row.getPhone());
+                    w.setAddress(row.getAddress());
+                } else {
+                    w.setStatus(1);
+                }
+                // 编码：Excel 有填则用客户编码，否则自动生成
+                String customCode = row.getCode();
+                w.setCode(customCode != null && !customCode.trim().isEmpty() ? customCode.trim() : generateWarehouseCode());
+                warehouseMapper.insert(w);
+
+                cache.put(cacheKey, w.getId());
+                parentId = w.getId();
+                created++;
+            }
+        }
+        return created;
     }
 }
