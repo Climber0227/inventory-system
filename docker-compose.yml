@@ -30,7 +30,7 @@ services:
     volumes:
       - ./data/uploads:/app/uploads
     ports:
-      - "8080:8080"
+      - "8888:8888"
 
   admin:
     build: ./inventory-admin
