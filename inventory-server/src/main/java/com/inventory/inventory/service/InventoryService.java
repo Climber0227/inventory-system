@@ -73,6 +73,18 @@ public class InventoryService {
 
     public List<Inventory> listAll() {
         List<Inventory> list = inventoryMapper.selectList(null);
+        enrichNames(list);
+        return list;
+    }
+
+    public List<Inventory> listByWarehouse(Long warehouseId) {
+        List<Inventory> list = inventoryMapper.selectList(
+                new LambdaQueryWrapper<Inventory>().eq(Inventory::getWarehouseId, warehouseId));
+        enrichNames(list);
+        return list;
+    }
+
+    private void enrichNames(List<Inventory> list) {
         for (Inventory inv : list) {
             if (inv.getProductId() != null) {
                 Product p = productMapper.selectById(inv.getProductId());
@@ -86,7 +98,6 @@ public class InventoryService {
                 if (w != null) { inv.setWarehouseName(w.getName()); inv.setWarehouseCode(w.getCode()); }
             }
         }
-        return list;
     }
 
     public List<Map<String, Object>> getAlertList() {
