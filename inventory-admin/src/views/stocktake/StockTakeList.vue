@@ -79,8 +79,8 @@ function handleExport(selected = false) {
   downloadFile(url, '库存盘点.xlsx')
 }
 onMounted(async () => {
-  const wRes = await request.get('/warehouse/list')
-  warehouses.value = wRes.data.data
+  const wRes = await request.get('/warehouse/tree')
+  warehouses.value = wRes.data.data || []
   fetchData()
 })
 </script>
@@ -90,9 +90,7 @@ onMounted(async () => {
     <div class="page-header"><h2>库存盘点</h2><el-button type="primary" @click="router.push('/stocktake/create')">新建盘点单</el-button><el-button @click="handleExport">导出Excel</el-button></div>
     <div class="search-bar">
       <el-input v-model="query.orderNo" placeholder="盘点单号" clearable style="width:160px" @keyup.enter="handleSearch" @clear="handleSearch" />
-      <el-select v-model="query.warehouseId" placeholder="仓库" clearable style="width:120px" @change="handleSearch">
-        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-      </el-select>
+      <el-tree-select v-model="query.warehouseId" :data="warehouses" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="仓库" clearable filterable style="width:200px" @change="handleSearch" />
       <el-select v-model="query.takeType" placeholder="盘点方式" clearable style="width:100px" @change="handleSearch">
         <el-option label="全盘" :value="0" /><el-option label="抽盘" :value="1" />
       </el-select>

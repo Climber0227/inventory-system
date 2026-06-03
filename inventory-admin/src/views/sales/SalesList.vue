@@ -112,10 +112,10 @@ function getSummaries(param: { columns: any[]; data: any[] }) {
 onMounted(async () => {
   const [cRes, wRes] = await Promise.all([
     request.get('/customer/list'),
-    request.get('/warehouse/list'),
+    request.get('/warehouse/tree'),
   ])
   customers.value = cRes.data.data
-  warehouses.value = wRes.data.data
+  warehouses.value = wRes.data.data || []
   fetchData()
 })
 </script>
@@ -128,9 +128,7 @@ onMounted(async () => {
       <el-select v-model="query.customerId" placeholder="客户" clearable filterable style="width:130px" @change="handleSearch">
         <el-option v-for="c in customers" :key="c.id" :label="c.name" :value="c.id" />
       </el-select>
-      <el-select v-model="query.warehouseId" placeholder="仓库" clearable style="width:110px" @change="handleSearch">
-        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-      </el-select>
+      <el-tree-select v-model="query.warehouseId" :data="warehouses" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="仓库" clearable filterable style="width:200px" @change="handleSearch" />
       <el-select v-model="query.status" placeholder="状态" clearable style="width:90px" @change="handleSearch">
         <el-option label="草稿" :value="0" /><el-option label="已出库" :value="1" /><el-option label="已取消" :value="2" /><el-option label="待审批" :value="4" />
       </el-select>

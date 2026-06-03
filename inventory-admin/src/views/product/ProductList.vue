@@ -135,6 +135,21 @@ function handleExport(selected = false) {
   downloadFile(url, '商品管理.xlsx')
 }
 
+const fileInput = ref<HTMLInputElement>()
+function handleImport() { fileInput.value?.click() }
+async function onFileChange(e: Event) {
+  const files = (e.target as HTMLInputElement).files
+  if (!files?.length) return
+  const formData = new FormData()
+  formData.append('file', files[0])
+  try {
+    const res = await request.post('/product/import', formData)
+    ElMessage.success(res.data.message)
+    fetchData()
+  } catch { /* handled */ }
+  (e.target as HTMLInputElement).value = ''
+}
+
 async function handleDelete(row: Product) {
   try {
     await ElMessageBox.confirm(`确定作废商品「${row.name}」？`, '确认作废', { type: 'warning' })
@@ -214,7 +229,15 @@ onMounted(async () => { const r = await request.get('/warehouse/tree'); warehous
       <h2>商品管理</h2>
       <div>
         <el-button type="primary" @click="openCreate">新增商品</el-button>
-        <el-button @click="handleExport">导出Excel</el-button>
+        <el-button @click="handleImport">导入Excel</el-button>
+        <el-button @click="downloadFile('/product/import/template', '商品导入模板.xlsx')">下载模板</el-button>
+        <el-tooltip content="表头与导入模板一致，修改后可直接导入" placement="top">
+          <el-button @click="downloadFile('/product/export-for-import', '商品数据(可回导).xlsx')">导出规范Excel</el-button>
+        </el-tooltip>
+        <el-tooltip content="包含库存数量、预警状态等详细信息" placement="top">
+          <el-button @click="handleExport">导出Excel</el-button>
+        </el-tooltip>
+        <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="onFileChange" />
       </div>
     </div>
 
@@ -240,7 +263,13 @@ onMounted(async () => { const r = await request.get('/warehouse/tree'); warehous
         <el-option label="启用" :value="1" />
         <el-option label="停用" :value="0" />
       </el-select>
-      <el-cascader v-model="whPath" :options="warehouseTree" :props="{ label: 'name', children: 'children', value: 'id', emitPath: false, checkStrictly: true }" placeholder="全部仓库" clearable style="width: 160px" @change="onWhChange" />
+      <el-cascader v-model="whPath" :options="warehouseTree" :props="{ label: 'name', children: 'children', value: 'id', emitPath: false, checkStrictly: true }" placeholder="全部仓库" clearable filterable style="width: 160px" @change="onWhChange">
+        <template #default="{ data }">
+          <span>{{ data.name }}</span>
+          <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:4px;">虚拟</el-tag>
+          <span v-else style="font-size:11px;color:#2e7d32;margin-left:4px;">库存{{ data.productCount || 0 }}</span>
+        </template>
+      </el-cascader>
       <el-tree-select
         v-model="query.categoryId"
         :data="categories"

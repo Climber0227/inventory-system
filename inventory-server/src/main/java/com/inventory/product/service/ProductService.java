@@ -20,14 +20,12 @@ import com.inventory.transfer.mapper.InventoryTransferItemMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.inventory.product.entity.ProductImportVO;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import cn.hutool.core.date.DateUtil;
 import java.util.Date;
@@ -163,6 +161,76 @@ public class ProductService {
         productMapper.insert(product);
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public int importExcel(List<ProductImportVO> rows) {
+        Map<String, Long> catCache = new HashMap<>();
+        // 加载已有分类到缓存
+        categoryMapper.selectList(null).forEach(c ->
+                catCache.put(c.getName() + ":" + (c.getParentId() == null ? 0 : c.getParentId()), c.getId()));
+
+        // 加载已有商品名称到集合（用于查重）
+        Set<String> existingNames = productMapper.selectList(
+                new LambdaQueryWrapper<Product>().select(Product::getName))
+                .stream().map(Product::getName).collect(Collectors.toSet());
+
+        int created = 0;
+        for (ProductImportVO row : rows) {
+            if (row.getName() == null || row.getName().trim().isEmpty()) continue;
+            String name = row.getName().trim();
+
+            // 同名商品跳过
+            if (existingNames.contains(name)) continue;
+
+            // 解析分类路径
+            Long categoryId = null;
+            if (row.getCategoryPath() != null && !row.getCategoryPath().trim().isEmpty()) {
+                String[] parts = row.getCategoryPath().split("/");
+                Long parentId = null;
+                for (String part : parts) {
+                    String catName = part.trim();
+                    if (catName.isEmpty()) continue;
+                    String cacheKey = catName + ":" + (parentId == null ? 0 : parentId);
+                    Long existed = catCache.get(cacheKey);
+                    if (existed != null) {
+                        parentId = existed;
+                        continue;
+                    }
+                    ProductCategory cat = new ProductCategory();
+                    cat.setName(catName);
+                    cat.setParentId(parentId);
+                    cat.setStatus(1);
+                    categoryMapper.insert(cat);
+                    catCache.put(cacheKey, cat.getId());
+                    parentId = cat.getId();
+                }
+                categoryId = parentId;
+            }
+
+            Product p = new Product();
+            p.setName(name);
+            p.setCategoryId(categoryId);
+            p.setSpec(row.getSpec());
+            p.setUnit(row.getUnit());
+            p.setPurchasePrice(row.getPurchasePrice());
+            p.setSalePrice(row.getSalePrice());
+            p.setMinStock(row.getMinStock());
+            p.setMaxStock(row.getMaxStock());
+            p.setStatus("停用".equals(row.getStatus()) ? 0 : 1);
+
+            // 编码：Excel有填则用（重复则自动生成），否则自动生成
+            if (row.getCode() != null && !row.getCode().trim().isEmpty()
+                    && productMapper.countAllByCode(row.getCode().trim()) == 0) {
+                p.setCode(row.getCode().trim());
+            } else {
+                p.setCode(generateProductCode());
+            }
+            productMapper.insert(p);
+            existingNames.add(name);
+            created++;
+        }
+        return created;
+    }
+
     private synchronized String generateProductCode() {
         String prefix = "GD";
         String dateStr = DateUtil.format(new Date(), "yyyyMMdd");
@@ -171,19 +239,54 @@ public class ProductService {
         String maxCode = productMapper.selectMaxCodeByPrefix(likePrefix);
         int seq = 1;
         if (maxCode != null) {
-            seq = Integer.parseInt(maxCode.substring(maxCode.length() - 3)) + 1;
+            seq = Integer.parseInt(maxCode.substring(maxCode.length() - 6)) + 1;
         }
 
-        String code = likePrefix + String.format("%03d", seq);
+        String code = likePrefix + String.format("%06d", seq);
         while (productMapper.countAllByCode(code) > 0) {
             seq++;
-            code = likePrefix + String.format("%03d", seq);
+            code = likePrefix + String.format("%06d", seq);
         }
         return code;
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void update(Product product) { productMapper.updateById(product); }
+
+    public List<ProductImportVO> getImportVOs() {
+        List<Product> products = productMapper.selectList(new LambdaQueryWrapper<Product>().orderByDesc(Product::getId));
+        // 加载所有分类
+        List<ProductCategory> allCats = categoryMapper.selectList(null);
+        java.util.Map<Long, ProductCategory> catMap = allCats.stream()
+                .collect(java.util.stream.Collectors.toMap(ProductCategory::getId, c -> c));
+        // 构建分类路径
+        java.util.function.Function<Long, String> buildPath = (id) -> {
+            StringBuilder sb = new StringBuilder();
+            Long currentId = id;
+            while (currentId != null) {
+                ProductCategory cat = catMap.get(currentId);
+                if (cat == null) break;
+                if (sb.length() > 0) sb.insert(0, "/");
+                sb.insert(0, cat.getName());
+                currentId = cat.getParentId();
+            }
+            return sb.toString();
+        };
+        return products.stream().map(p -> {
+            ProductImportVO vo = new ProductImportVO();
+            vo.setName(p.getName());
+            vo.setCode(p.getCode());
+            if (p.getCategoryId() != null) vo.setCategoryPath(buildPath.apply(p.getCategoryId()));
+            vo.setSpec(p.getSpec());
+            vo.setUnit(p.getUnit());
+            vo.setPurchasePrice(p.getPurchasePrice());
+            vo.setSalePrice(p.getSalePrice());
+            vo.setMinStock(p.getMinStock());
+            vo.setMaxStock(p.getMaxStock());
+            vo.setStatus(p.getStatus() != null && p.getStatus() == 1 ? "启用" : "停用");
+            return vo;
+        }).collect(java.util.stream.Collectors.toList());
+    }
 
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {

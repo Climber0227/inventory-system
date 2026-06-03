@@ -10,6 +10,8 @@ import com.inventory.inventory.entity.InventoryLog;
 import com.inventory.inventory.entity.InventoryLogExportVO;
 import com.inventory.inventory.service.InventoryLogService;
 import com.inventory.inventory.service.InventoryService;
+import com.inventory.warehouse.entity.Warehouse;
+import com.inventory.warehouse.mapper.WarehouseMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
@@ -17,8 +19,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Tag(name = "库存管理")
@@ -29,6 +30,7 @@ public class InventoryController {
 
     private final InventoryService inventoryService;
     private final InventoryLogService inventoryLogService;
+    private final WarehouseMapper warehouseMapper;
 
     @Operation(summary = "分页查询库存")
     @GetMapping("/page")
@@ -68,15 +70,50 @@ public class InventoryController {
             List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
             list = list.stream().filter(inv -> idList.contains(inv.getId())).collect(Collectors.toList());
         }
+        // 加载所有仓库，构建层级映射
+        List<Warehouse> allWarehouses = warehouseMapper.selectList(null);
+        Map<Long, Warehouse> whMap = allWarehouses.stream().collect(Collectors.toMap(Warehouse::getId, w -> w));
         List<InventoryExportVO> voList = list.stream().map(inv -> {
             InventoryExportVO vo = new InventoryExportVO();
             vo.setProductCode(inv.getProductCode());
             vo.setProductName(inv.getProductName());
-            vo.setWarehouseName(inv.getWarehouseName());
             vo.setQuantity(inv.getQuantity());
             vo.setCostPrice("¥" + String.format("%.2f", inv.getCostPrice() != null ? inv.getCostPrice().doubleValue() : 0.0));
             vo.setAmount("¥" + String.format("%.2f",
                     (inv.getCostPrice() != null ? inv.getCostPrice().doubleValue() : 0.0) * (inv.getQuantity() != null ? inv.getQuantity() : 0)));
+            // 填充仓库层级
+            if (inv.getWarehouseId() != null) {
+                Warehouse w = whMap.get(inv.getWarehouseId());
+                if (w != null) {
+                    switch (w.getLevel() != null ? w.getLevel() : 1) {
+                        case 4: vo.setLevel4Name(w.getName());
+                            Warehouse p3 = whMap.get(w.getParentId());
+                            if (p3 != null) {
+                                vo.setLevel3Name(p3.getName());
+                                Warehouse p2 = whMap.get(p3.getParentId());
+                                if (p2 != null) {
+                                    vo.setLevel2Name(p2.getName());
+                                    Warehouse p1 = whMap.get(p2.getParentId());
+                                    if (p1 != null) vo.setLevel1Name(p1.getName());
+                                }
+                            }
+                            break;
+                        case 3: vo.setLevel3Name(w.getName());
+                            Warehouse p2 = whMap.get(w.getParentId());
+                            if (p2 != null) {
+                                vo.setLevel2Name(p2.getName());
+                                Warehouse p1 = whMap.get(p2.getParentId());
+                                if (p1 != null) vo.setLevel1Name(p1.getName());
+                            }
+                            break;
+                        case 2: vo.setLevel2Name(w.getName());
+                            Warehouse p1 = whMap.get(w.getParentId());
+                            if (p1 != null) vo.setLevel1Name(p1.getName());
+                            break;
+                        default: vo.setLevel1Name(w.getName()); break;
+                    }
+                }
+            }
             return vo;
         }).collect(Collectors.toList());
         ExcelUtil.export(response, voList, "库存列表", InventoryExportVO.class);

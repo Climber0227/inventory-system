@@ -189,7 +189,13 @@ watch(() => form.outWarehouseId, async (whId) => {
                 filterable
                 clearable
                 style="width:100%"
-              />
+              >
+                <template #default="{ data }">
+                  <span>{{ data.name }}</span>
+                  <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:6px;">虚拟</el-tag>
+                  <span v-else style="font-size:11px;color:#2e7d32;margin-left:6px;">库存{{ data.productCount || 0 }}</span>
+                </template>
+              </el-cascader>
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -202,7 +208,13 @@ watch(() => form.outWarehouseId, async (whId) => {
                 filterable
                 clearable
                 style="width:100%"
-              />
+              >
+                <template #default="{ data }">
+                  <span>{{ data.name }}</span>
+                  <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:6px;">虚拟</el-tag>
+                  <span v-else style="font-size:11px;color:#2e7d32;margin-left:6px;">库存{{ data.productCount || 0 }}</span>
+                </template>
+              </el-cascader>
             </el-form-item>
           </el-col>
           <el-col :span="8">

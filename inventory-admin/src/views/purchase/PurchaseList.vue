@@ -90,7 +90,7 @@ async function handleBatchDelete() {
   } catch {}
 }
 async function fetchSuppliers() { const res = await request.get('/supplier/list'); suppliers.value = res.data.data }
-async function fetchWarehouses() { const res = await request.get('/warehouse/list'); warehouses.value = res.data.data }
+async function fetchWarehouses() { const res = await request.get('/warehouse/tree'); warehouses.value = res.data.data || [] }
 function handleExport(selected = false) {
   const url = selected && selectedIds.value.length ? `/purchase-order/export?ids=${selectedIds.value.join(',')}` : '/purchase-order/export'
   downloadFile(url, '采购入库.xlsx')
@@ -121,9 +121,7 @@ onMounted(() => { fetchData(); fetchSuppliers(); fetchWarehouses() })
       <el-select v-model="query.supplierId" placeholder="供应商" clearable filterable style="width:160px" @change="handleSearch">
         <el-option v-for="s in suppliers" :key="s.id" :label="s.name" :value="s.id" />
       </el-select>
-      <el-select v-model="query.warehouseId" placeholder="仓库" clearable style="width:140px" @change="handleSearch">
-        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-      </el-select>
+      <el-tree-select v-model="query.warehouseId" :data="warehouses" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="仓库" clearable filterable style="width:200px" @change="handleSearch" />
       <el-select v-model="query.status" placeholder="状态" clearable style="width:120px" @change="handleSearch">
         <el-option label="草稿" :value="0" /><el-option label="已入库" :value="1" /><el-option label="已取消" :value="2" /><el-option label="待审批" :value="4" />
       </el-select>

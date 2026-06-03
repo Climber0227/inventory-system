@@ -62,20 +62,6 @@ function buildTreeWithStock(nodes: any[]): any[] {
   })
 }
 
-// 将仓库树展平为下拉选项（含层级路径）
-const whOptions = computed(() => {
-  const result: any[] = []
-  function walk(nodes: any[], prefix = '') {
-    for (const n of nodes) {
-      const path = prefix ? prefix + ' / ' + n.name : n.name
-      result.push({ id: n.id, name: n.name, path })
-      if (n.children?.length) walk(n.children, path)
-    }
-  }
-  walk(warehouseTree.value)
-  return result
-})
-
 // 当级联选择了仓库时，裁剪树只显示该仓库及其子节点
 function pruneTree(nodes: any[], targetId: number): any[] | null {
   for (const n of nodes) {
@@ -130,9 +116,7 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
 
     <div class="search-bar">
       <el-input v-model="query.productName" placeholder="商品名称/编码" clearable style="width:200px" @keyup.enter="handleSearch" @clear="handleSearch" />
-      <el-select v-model="query.warehouseId" placeholder="全部仓库" clearable filterable style="width:220px" @change="fetchData">
-        <el-option v-for="opt in whOptions" :key="opt.id" :label="opt.path" :value="opt.id" />
-      </el-select>
+      <el-tree-select v-model="query.warehouseId" :data="warehouseTree" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="全部仓库" clearable filterable style="width:220px" @change="fetchData" />
       <el-button type="primary" @click="handleSearch">查询</el-button>
       <el-button @click="handleReset">重置</el-button>
     </div>
@@ -146,6 +130,7 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
           <span v-else class="toggle-icon" style="visibility:hidden;">▶</span>
           <span class="node-name">{{ node.name }}</span>
           <el-tag size="small" :type="['primary','success','warning','info'][node.level-1] || 'info'">{{ node.level }}级</el-tag>
+          <el-tag v-if="node.children?.length" size="small" type="info" effect="plain" style="margin-left:4px;">虚拟节点</el-tag>
           <span class="node-stats" v-if="node._pc">{{ node._pc }} 种 · {{ node._qty }} 件 · ¥{{ node._amt.toFixed(2) }}</span>
         </div>
         <!-- 叶子节点：展示库存表格 -->

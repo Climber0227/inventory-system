@@ -82,7 +82,8 @@ onMounted(() => {
         :props="{ value: 'id', label: 'name', children: 'children' }"
         placeholder="仓库"
         clearable
-        style="width:180px"
+        filterable
+        style="width:240px"
         @change="onWarehouseChange"
       />
       <el-select v-model="query.changeType" placeholder="操作类型" clearable style="width:140px"
