@@ -12,6 +12,37 @@ const warehouseTree = ref<any[]>([])
 
 const query = ref({ productName: '', warehouseId: undefined as number | undefined })
 
+// 批量选择仓库
+const selectedWarehouseIds = reactive(new Set<number>())
+const selectedCount = computed(() => selectedWarehouseIds.size)
+
+// 收集某个节点下的所有叶子仓库ID
+function collectLeafIds(node: any): number[] {
+  if (!node.children || node.children.length === 0) return [node.id]
+  return node.children.flatMap((c: any) => collectLeafIds(c))
+}
+
+function isNodeChecked(node: any): boolean {
+  const leafIds = collectLeafIds(node)
+  return leafIds.length > 0 && leafIds.every((id: number) => selectedWarehouseIds.has(id))
+}
+
+function isNodeIndeterminate(node: any): boolean {
+  const leafIds = collectLeafIds(node)
+  const some = leafIds.some((id: number) => selectedWarehouseIds.has(id))
+  const all = leafIds.every((id: number) => selectedWarehouseIds.has(id))
+  return some && !all
+}
+
+function toggleWarehouseSelect(node: any) {
+  const leafIds = collectLeafIds(node)
+  if (isNodeChecked(node)) {
+    leafIds.forEach(id => selectedWarehouseIds.delete(id))
+  } else {
+    leafIds.forEach(id => selectedWarehouseIds.add(id))
+  }
+}
+
 async function fetchData() {
   loading.value = true
   try {
@@ -33,12 +64,19 @@ const expanded = reactive(new Set<number>())
 function toggle(id: number) { expanded.has(id) ? expanded.delete(id) : expanded.add(id) }
 function isExpanded(id: number) { return expanded.has(id) }
 
-function handleSearch() { fetchData() }
-function handleReset() { query.value = { productName: '', warehouseId: undefined }; fetchData(); expanded.clear() }
+function handleSearch() { selectedWarehouseIds.clear(); fetchData() }
+function handleReset() { query.value = { productName: '', warehouseId: undefined }; fetchData(); expanded.clear(); selectedWarehouseIds.clear() }
+function handleWarehouseFilterChange() { selectedWarehouseIds.clear(); fetchData() }
 function handleExport() {
+  selectedWarehouseIds.clear()
   const warehouseId = query.value.warehouseId
   const url = warehouseId ? `/inventory/export?warehouseId=${warehouseId}` : '/inventory/export'
   downloadFile(url, '库存查询.xlsx')
+}
+function handleBatchExport() {
+  const ids = Array.from(selectedWarehouseIds).join(',')
+  downloadFile(`/inventory/export?warehouseIds=${ids}`, '库存查询.xlsx')
+  selectedWarehouseIds.clear()
 }
 
 // 从 inventory 数据构建商品名→库存的映射
@@ -114,13 +152,14 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
       <h2>库存查询</h2>
       <div>
         <el-button @click="router.push('/inventory/log')">库存流水</el-button>
+        <el-button v-if="selectedCount > 0" type="warning" @click="handleBatchExport">批量导出 ({{ selectedCount }})</el-button>
         <el-button @click="handleExport">导出Excel</el-button>
       </div>
     </div>
 
     <div class="search-bar">
       <el-input v-model="query.productName" placeholder="商品名称/编码" clearable style="width:200px" @keyup.enter="handleSearch" @clear="handleSearch" />
-      <el-tree-select v-model="query.warehouseId" :data="warehouseTree" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="全部仓库" clearable filterable style="width:220px" @change="fetchData" />
+      <el-tree-select v-model="query.warehouseId" :data="warehouseTree" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="全部仓库" clearable filterable style="width:220px" @change="handleWarehouseFilterChange" />
       <el-button type="primary" @click="handleSearch">查询</el-button>
       <el-button @click="handleReset">重置</el-button>
     </div>
@@ -129,13 +168,28 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
       <div v-if="!flatList.length && !loading" style="text-align:center;padding:60px 0;color:#999;">暂无库存数据</div>
 
       <div v-for="node in flatList" :key="node.id" class="tree-row" :style="{ paddingLeft: (node.depth * 24 + 16) + 'px' }">
-        <div class="tree-node" :class="'level-' + node.level" @click="node.children?.length && toggle(node.id)">
-          <span v-if="node.children?.length" class="toggle-icon">{{ isExpanded(node.id) ? '▼' : '▶' }}</span>
+        <div class="tree-node" :class="'level-' + node.level">
+          <span v-if="node.children?.length" class="toggle-icon" @click="toggle(node.id)">{{ isExpanded(node.id) ? '▼' : '▶' }}</span>
           <span v-else class="toggle-icon" style="visibility:hidden;">▶</span>
-          <span class="node-name">{{ node.name }}</span>
+          <el-checkbox
+            :model-value="isNodeChecked(node)"
+            :indeterminate="isNodeIndeterminate(node)"
+            size="small"
+            @click.stop
+            @change="toggleWarehouseSelect(node)"
+          />
+          <span class="node-name" @click="node.children?.length && toggle(node.id)">{{ node.name }}</span>
           <el-tag size="small" :type="['primary','success','warning','info'][node.level-1] || 'info'">{{ node.level }}级</el-tag>
           <el-tag v-if="node.children?.length" size="small" type="info" effect="plain" style="margin-left:4px;">虚拟节点</el-tag>
-          <span class="node-stats" v-if="node._pc">{{ node._pc }} 种 · {{ node._qty }} 件 · ¥{{ node._amt.toFixed(2) }}</span>
+          <span class="node-stats" v-if="node._pc">
+            <span class="stats-badge">{{ node._pc }} 种商品</span>
+            <span class="stats-badge">{{ node._qty }} 件</span>
+            <span class="stats-badge amount">¥{{ node._amt.toFixed(2) }}</span>
+          </span>
+        </div>
+        <!-- 叶子节点：库存汇总条 -->
+        <div v-if="!node.children?.length && node._pc" class="leaf-summary">
+          📦 {{ node.name }} · {{ node._pc }} 种商品 · 共 {{ node._qty }} 件 · 金额 ¥{{ node._amt.toFixed(2) }}
         </div>
         <!-- 叶子节点：展示库存表格 -->
         <div v-if="!node.children?.length && node._pc" class="leaf-inventory">
@@ -157,7 +211,8 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
       </div>
 
       <div class="grand-total" v-if="flatList.length">
-        <span>总计：{{ grandTotal.qty }} 件 · 金额 ¥{{ grandTotal.amt.toFixed(2) }}</span>
+        <span class="grand-total-label">📊 全部仓库合计</span>
+        <span>{{ grandTotal.qty }} 件 · 金额 ¥{{ grandTotal.amt.toFixed(2) }}</span>
       </div>
     </div>
   </div>
@@ -178,11 +233,25 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
 .tree-node.level-4 { cursor: default; font-size: 13px; }
 .toggle-icon { font-size: 10px; color: #909399; width: 12px; text-align: center; flex-shrink: 0; }
 .node-name { color: #303133; font-weight: 600; white-space: nowrap; }
-.node-stats { font-size: 12px; color: #909399; margin-left: auto; white-space: nowrap; }
-.leaf-inventory { margin: 4px 0 12px 0; }
+.node-stats { font-size: 13px; font-weight: 600; margin-left: auto; white-space: nowrap; display: flex; gap: 6px; align-items: center; }
+.stats-badge {
+  background: #ecf5ff; color: #409eff; padding: 2px 8px; border-radius: 4px; font-size: 12px;
+}
+.stats-badge.amount {
+  background: #fdf6ec; color: #e6a23c;
+}
+.leaf-summary {
+  font-size: 13px; font-weight: 600; color: #303133;
+  padding: 6px 12px; margin: 0 0 4px 0;
+  background: #f0f9eb; border-left: 3px solid #67c23a; border-radius: 0 4px 4px 0;
+}
 .grand-total {
+  display: flex; align-items: center; gap: 16px;
   text-align: right; padding: 14px 20px; margin-top: 8px;
   font-size: 15px; font-weight: 600; color: #303133;
   background: #f5f7fa; border-radius: 6px;
+}
+.grand-total-label {
+  background: #409eff; color: #fff; padding: 4px 12px; border-radius: 4px; font-size: 13px;
 }
 </style>
