@@ -35,7 +35,11 @@ function isExpanded(id: number) { return expanded.has(id) }
 
 function handleSearch() { fetchData() }
 function handleReset() { query.value = { productName: '', warehouseId: undefined }; fetchData(); expanded.clear() }
-function handleExport() { downloadFile('/inventory/export', '库存查询.xlsx') }
+function handleExport() {
+  const warehouseId = query.value.warehouseId
+  const url = warehouseId ? `/inventory/export?warehouseId=${warehouseId}` : '/inventory/export'
+  downloadFile(url, '库存查询.xlsx')
+}
 
 // 从 inventory 数据构建商品名→库存的映射
 const invByWarehouse = computed(() => {

@@ -64,8 +64,11 @@ public class InventoryController {
     @Operation(summary = "导出库存")
     @GetMapping("/export")
     public void export(HttpServletResponse response,
-                       @RequestParam(required = false) String ids) {
-        List<Inventory> list = inventoryService.listAll();
+                       @RequestParam(required = false) String ids,
+                       @RequestParam(required = false) Long warehouseId) {
+        List<Inventory> list = warehouseId != null
+                ? inventoryService.listByWarehouse(warehouseId)
+                : inventoryService.listAll();
         if (ids != null && !ids.isEmpty()) {
             List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
             list = list.stream().filter(inv -> idList.contains(inv.getId())).collect(Collectors.toList());
