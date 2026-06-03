@@ -111,6 +111,7 @@ public class ProductService {
     public List<Product> listAll() {
         List<Product> list = productMapper.selectList(new LambdaQueryWrapper<Product>().orderByDesc(Product::getId));
         for (Product p : list) enrichInventory(p);
+        enrichCategoryNames(list);
         return list;
     }
 

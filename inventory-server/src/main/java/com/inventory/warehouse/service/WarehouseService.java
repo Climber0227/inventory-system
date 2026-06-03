@@ -350,9 +350,13 @@ public class WarehouseService {
                 } else {
                     w.setStatus(1);
                 }
-                // 编码：Excel 有填则用客户编码，否则自动生成
+                // 编码：仅叶子节点使用客户自定义编码，父节点始终自动生成
                 String customCode = row.getCode();
-                w.setCode(customCode != null && !customCode.trim().isEmpty() ? customCode.trim() : generateWarehouseCode());
+                if (isLast && customCode != null && !customCode.trim().isEmpty()) {
+                    w.setCode(customCode.trim());
+                } else {
+                    w.setCode(generateWarehouseCode());
+                }
                 warehouseMapper.insert(w);
 
                 cache.put(cacheKey, w.getId());
