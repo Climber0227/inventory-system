@@ -52,7 +52,13 @@ onMounted(fetchWarehouseTree)
             filterable
             clearable
             style="width:100%"
-          />
+          >
+            <template #default="{ data }">
+              <span>{{ data.name }}</span>
+              <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:6px;">虚拟</el-tag>
+              <span v-else style="font-size:11px;color:#2e7d32;margin-left:6px;">库存{{ data.productCount || 0 }}</span>
+            </template>
+          </el-cascader>
         </el-form-item>
         <el-form-item label="盘点日期">
           <el-date-picker v-model="form.orderDate" type="date" value-format="YYYY-MM-DD" style="width:100%" :disabled-date="disabledDate" />

@@ -76,11 +76,16 @@ public class WarehouseService {
                 .orderByAsc(Warehouse::getId));
     }
 
-    public List<Warehouse> search(String keyword) {
-        return warehouseMapper.selectList(new LambdaQueryWrapper<Warehouse>()
+    public List<Warehouse> search(String keyword, Integer level) {
+        LambdaQueryWrapper<Warehouse> wrapper = new LambdaQueryWrapper<Warehouse>()
                 .eq(Warehouse::getStatus, 1)
-                .and(w -> w.like(Warehouse::getName, keyword).or().like(Warehouse::getCode, keyword))
-                .orderByAsc(Warehouse::getId));
+                .eq(level != null, Warehouse::getLevel, level);
+        if (keyword != null && !keyword.isEmpty()) {
+            wrapper.and(w -> w.like(Warehouse::getName, keyword).or().like(Warehouse::getCode, keyword));
+        }
+        List<Warehouse> list = warehouseMapper.selectList(wrapper.orderByAsc(Warehouse::getId));
+        for (Warehouse w : list) enrichStats(w);
+        return list;
     }
 
     public List<Warehouse> listAll() {
@@ -315,7 +320,7 @@ public class WarehouseService {
 
             for (int i = 0; i < names.length; i++) {
                 String name = names[i];
-                if (name == null || name.trim().isEmpty()) break;
+                if (name == null || name.trim().isEmpty()) continue;
                 name = name.trim();
                 level = i + 1;
 

@@ -7,6 +7,7 @@ import com.inventory.common.result.R;
 import com.inventory.common.util.ExcelUtil;
 import com.inventory.product.entity.Product;
 import com.inventory.product.entity.ProductExportVO;
+import com.inventory.product.entity.ProductImportVO;
 import com.inventory.product.service.ProductService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -15,8 +16,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
-import java.util.Arrays;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Tag(name = "商品管理")
@@ -91,6 +91,33 @@ public class ProductController {
     public R<Void> restore(@PathVariable Long id) {
         productService.restore(id);
         return R.ok();
+    }
+
+    @Operation(summary = "下载导入模板")
+    @GetMapping("/import/template")
+    public void importTemplate(HttpServletResponse response) {
+        ExcelUtil.export(response, java.util.Collections.emptyList(), "商品导入模板", ProductImportVO.class);
+    }
+
+    @SaCheckRole("role_1")
+    @Operation(summary = "导入商品")
+    @PostMapping("/import")
+    public R<String> importExcel(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        try {
+            List<ProductImportVO> rows = com.alibaba.excel.EasyExcel.read(file.getInputStream())
+                    .head(ProductImportVO.class).sheet().doReadSync();
+            int count = productService.importExcel(rows);
+            return R.ok("导入成功，共创建 " + count + " 个商品");
+        } catch (Exception e) {
+            throw new com.inventory.common.exception.BusinessException("导入失败: " + e.getMessage());
+        }
+    }
+
+    @Operation(summary = "导出为导入格式")
+    @GetMapping("/export-for-import")
+    public void exportForImport(HttpServletResponse response) {
+        List<ProductImportVO> voList = productService.getImportVOs();
+        ExcelUtil.export(response, voList, "商品导入格式", ProductImportVO.class);
     }
 
     @Operation(summary = "导出商品")

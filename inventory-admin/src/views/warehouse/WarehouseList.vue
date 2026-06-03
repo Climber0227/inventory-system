@@ -135,6 +135,9 @@ onMounted(fetchTree)
       <div>
         <el-button type="primary" @click="openCreate()">+ 新增仓库</el-button>
         <el-button @click="handleImport">导入Excel</el-button>
+        <el-tooltip content="请确保无跨级仓库数据（如1级直接到3级），中间层级不能为空" placement="top">
+          <span style="color:#f56c6c;font-size:12px;cursor:help;margin-left:2px;">⚠</span>
+        </el-tooltip>
         <el-button @click="downloadFile('/warehouse/import/template', '仓库导入模板.xlsx')">下载模板</el-button>
         <el-button @click="handleExport">导出Excel</el-button>
         <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="onFileChange" />
@@ -148,8 +151,15 @@ onMounted(fetchTree)
         :props="{ value: 'id', label: 'name', children: 'children', emitPath: false, checkStrictly: true }"
         placeholder="按层级筛选"
         clearable
+        filterable
         style="width:200px"
-      />
+      >
+        <template #default="{ data }">
+          <span>{{ data.name }}</span>
+          <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:6px;">虚拟</el-tag>
+          <span v-else style="font-size:11px;color:#2e7d32;margin-left:6px;">库存{{ data.productCount || 0 }}</span>
+        </template>
+      </el-cascader>
       <el-input v-model="query.keyword" placeholder="搜索仓库名称/编码" clearable style="width:220px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-input v-model="query.name" placeholder="仓库名称" clearable style="width:160px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-select v-model="query.status" placeholder="状态" clearable style="width:120px" @change="handleSearch">
@@ -165,6 +175,7 @@ onMounted(fetchTree)
           <template #default="{ row }">
             <span :style="{ fontWeight: row.level === 1 ? 'bold' : 'normal', color: row.status === 0 ? '#999' : '' }">{{ row.name }}</span>
             <el-tag :type="['','primary','success','warning','info'][row.level]" size="small" style="margin-left:6px;">{{ row.level }}级</el-tag>
+            <el-tag v-if="row.children?.length" type="info" size="small" effect="plain" style="margin-left:4px;">虚拟节点</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="code" label="编码" width="200" />

@@ -40,8 +40,9 @@ public class WarehouseController {
 
     @Operation(summary = "搜索仓库")
     @GetMapping("/search")
-    public R<List<Warehouse>> search(@RequestParam String keyword) {
-        return R.ok(warehouseService.search(keyword));
+    public R<List<Warehouse>> search(@RequestParam(required = false) String keyword,
+                                      @RequestParam(required = false) Integer level) {
+        return R.ok(warehouseService.search(keyword, level));
     }
 
     @Operation(summary = "查询所有启用的仓库")

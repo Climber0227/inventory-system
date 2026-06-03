@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
@@ -20,6 +20,50 @@ const whTarget = ref('from')
 const whCascade = ref([])
 const whOptions = ref([])
 const showWhPicker = ref(false)
+const whSearchKeyword = ref('')
+const whSearchResults = ref([])
+const whSearching = ref(false)
+const whSearched = ref(false)
+
+async function doWhSearch() {
+  const kw = whSearchKeyword.value.trim()
+  if (!kw) return
+  whSearching.value = true
+  try {
+    const res = await request.get('/warehouse/search', { params: { keyword: kw } })
+    whSearchResults.value = (res.data || []).map(w => {
+      w._path = getWhPath(w.id)
+      const treeNode = findWhInTree(warehouseTree.value, w.id)
+      if (treeNode) w.children = treeNode.children
+      return w
+    })
+    whSearched.value = true
+  } finally { whSearching.value = false }
+}
+function selectWhSearchResult(item) {
+  if (whTarget.value === 'from') form.value.fromWarehouseId = item.id
+  else form.value.toWarehouseId = item.id
+  showWhPicker.value = false; whSearchKeyword.value = ''; whSearchResults.value = []
+  whSearched.value = false
+  if (whTarget.value === 'from') loadFromStock(item.id)
+}
+function getWhPath(id) {
+  function f(nodes, target, path) {
+    for (const n of nodes) {
+      if (n.id === target) return [...path, n.name]
+      if (n.children?.length) { const r = f(n.children, target, [...path, n.name]); if (r) return r }
+    }
+    return null
+  }
+  return f(warehouseTree.value, id, [])?.join(' / ') || ''
+}
+function findWhInTree(nodes, id) {
+  for (const n of nodes) {
+    if (n.id === id) return n
+    if (n.children?.length) { const r = findWhInTree(n.children, id); if (r) return r }
+  }
+  return null
+}
 
 const form = ref({
   fromWarehouseId: null, toWarehouseId: null, remark: '', items: [],
@@ -222,16 +266,38 @@ async function handleSubmit() {
             <text style="font-weight:bold;">选择仓库</text>
             <view style="width:40px;"></view>
           </view>
+          <view style="padding:8px 16px 4px;">
+            <view style="display:flex;gap:6px;">
+              <input v-model="whSearchKeyword" class="search-input" placeholder="仓库名称/编码" style="flex:1;" @confirm="doWhSearch" />
+              <text class="search-btn" @click="doWhSearch">搜索</text>
+            </view>
+          </view>
           <view v-if="whCascade.length" class="wh-breadcrumb">
             <text v-for="(c, i) in whCascade" :key="i" class="wh-crumb" @click="goBackTo(i)">{{ c.name }}<text v-if="i < whCascade.length - 1"> ›</text></text>
           </view>
           <scroll-view scroll-y class="picker-list">
-            <view v-for="item in whOptions" :key="item.id" class="picker-item" @click="selectWhLevel(item)">
-              <text :style="{ fontWeight: item.children?.length ? 'bold' : 'normal' }">{{ item.name }}</text>
-              <text style="font-size:11px;color:#999;">{{ item.level }}级</text>
-              <text v-if="item.children?.length" style="margin-left:auto;color:#ccc;">›</text>
+            <!-- 搜索模式 -->
+            <view v-if="whSearched">
+              <view v-for="item in whSearchResults" :key="item.id" class="picker-item" @click="selectWhSearchResult(item)">
+                <view style="width:100%;overflow:hidden;">
+                  <view style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.name }}</view>
+                  <view style="font-size:11px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.level }}级 · <text :style="{color: item.children?.length ? '#409eff' : '#2e7d32'}">{{ item.children?.length ? '虚拟节点' : '库存 '+ (item.productCount||0) }}</text></view>
+                  <view style="font-size:11px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item._path }}</view>
+                </view>
+              </view>
+              <view v-if="!whSearching && !whSearchResults.length" style="text-align:center;padding:30px 0;color:#999;">未找到匹配仓库</view>
             </view>
-            <view v-if="!whOptions.length" style="text-align:center;padding:30px 0;color:#999;">无下级仓库</view>
+            <!-- 浏览模式 -->
+            <view v-else>
+              <view v-for="item in whOptions" :key="item.id" class="picker-item" @click="selectWhLevel(item)">
+                <view style="flex:1;overflow:hidden;">
+                  <view :style="{ fontWeight: item.children?.length ? 'bold' : 'normal', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }">{{ item.name }}</view>
+                  <view style="font-size:10px;color:#999;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ item.level }}级 · <text :style="{color: item.children?.length ? '#409eff' : '#2e7d32'}">{{ item.children?.length ? '虚拟节点' : '库存'+ (item.productCount||0) }}</text></view>
+                </view>
+                <view v-if="item.children?.length" style="margin-left:8px;color:#ccc;">›</view>
+              </view>
+              <view v-if="!whOptions.length" style="text-align:center;padding:30px 0;color:#999;">无下级仓库</view>
+            </view>
           </scroll-view>
         </view>
       </view>
@@ -289,7 +355,7 @@ async function handleSubmit() {
       <button class="btn-draft" :loading="submitting" @click="handleSaveDraft">保存草稿</button>
       <button class="btn-submit" :loading="submitting" @click="handleSubmit">{{ editingId ? '保存并提交' : '确认调拨' }}</button>
     </view>
-    <FloatingHome />
+    <FloatingHome v-if="!showWhPicker && !showPicker" />
   </view>
 </template>
 
@@ -326,8 +392,12 @@ async function handleSubmit() {
   border: 1px solid #dcdfe6; border-radius: 4px; padding: 10px 12px; }
 .picker-search .search-input.focused { border-color: #2e7d32; border-width: 1.5px; }
 .picker-list { padding: 0 16px 20px; max-height: 55vh; overflow-y: auto; }
-.picker-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #f5f5f5; }
+.picker-item { display: flex; align-items: center; padding: 12px 0; border-bottom: 1px solid #f5f5f5; overflow: hidden; }
 .picker-item:active { background: #f5f7f5; }
 .stock-text { color: #999; }
 .stock-text.has-stock { color: #2e7d32; font-weight:500; }
+.search-btn { display:inline-block; background:#2e7d32; color:#fff; padding:8px 16px; border-radius:4px; font-size:13px; white-space:nowrap; }
+.search-btn:active { opacity:0.8; }
+.level-tab { display:inline-block; padding:4px 10px; border-radius:4px; font-size:12px; background:#f5f5f5; color:#666; }
+.level-tab.active { background:#2e7d32; color:#fff; }
 </style>

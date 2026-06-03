@@ -109,8 +109,8 @@ function handleExport(selected = false) {
   downloadFile(url, '库存调拨.xlsx')
 }
 onMounted(async () => {
-  const wRes = await request.get('/warehouse/list')
-  warehouses.value = wRes.data.data
+  const wRes = await request.get('/warehouse/tree')
+  warehouses.value = wRes.data.data || []
   fetchData()
 })
 </script>
@@ -120,12 +120,8 @@ onMounted(async () => {
     <div class="page-header"><h2>库存调拨</h2><el-button type="primary" @click="router.push('/transfer/create')">新建调拨单</el-button><el-button @click="handleExport">导出Excel</el-button></div>
     <div class="search-bar">
       <el-input v-model="query.orderNo" placeholder="调拨单号" clearable style="width:160px" @keyup.enter="handleSearch" @clear="handleSearch" />
-      <el-select v-model="query.outWarehouseId" placeholder="调出仓库" clearable style="width:140px" @change="handleSearch">
-        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-      </el-select>
-      <el-select v-model="query.inWarehouseId" placeholder="调入仓库" clearable style="width:140px" @change="handleSearch">
-        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-      </el-select>
+      <el-tree-select v-model="query.outWarehouseId" :data="warehouses" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="调出仓库" clearable filterable style="width:200px" @change="handleSearch" />
+      <el-tree-select v-model="query.inWarehouseId" :data="warehouses" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="调入仓库" clearable filterable style="width:200px" @change="handleSearch" />
       <el-select v-model="query.status" placeholder="状态" clearable style="width:100px" @change="handleSearch">
         <el-option label="草稿" :value="0" /><el-option label="已完成" :value="1" /><el-option label="已取消" :value="2" /><el-option label="待审批" :value="4" />
       </el-select>
