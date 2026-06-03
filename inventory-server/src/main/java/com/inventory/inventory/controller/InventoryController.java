@@ -16,12 +16,16 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Tag(name = "库存管理")
 @RestController
 @RequestMapping("/api/v1/inventory")
@@ -65,14 +69,46 @@ public class InventoryController {
     @GetMapping("/export")
     public void export(HttpServletResponse response,
                        @RequestParam(required = false) String ids,
-                       @RequestParam(required = false) Long warehouseId) {
-        List<Inventory> list = warehouseId != null
-                ? inventoryService.listByWarehouse(warehouseId)
-                : inventoryService.listAll();
+                       @RequestParam(required = false) Long warehouseId,
+                       @RequestParam(required = false) String warehouseIds) {
+        List<Inventory> list;
+        if (warehouseIds != null && !warehouseIds.isEmpty()) {
+            List<Long> whIds = Arrays.stream(warehouseIds.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            list = inventoryService.listAll().stream()
+                    .filter(inv -> whIds.contains(inv.getWarehouseId())).collect(Collectors.toList());
+        } else if (warehouseId != null) {
+            list = inventoryService.listByWarehouse(warehouseId);
+        } else {
+            list = inventoryService.listAll();
+        }
         if (ids != null && !ids.isEmpty()) {
             List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
             list = list.stream().filter(inv -> idList.contains(inv.getId())).collect(Collectors.toList());
         }
+        // 合并同一商品+仓库的不同批次记录（导出无批次列，避免展示重复行）
+        log.debug("导出库存 - 合并前记录数: {}", list.size());
+        Map<String, Inventory> mergedMap = new LinkedHashMap<>();
+        for (Inventory inv : list) {
+            String key = inv.getProductId() + "_" + inv.getWarehouseId();
+            Inventory m = mergedMap.get(key);
+            if (m != null) {
+                int oldQty = m.getQuantity() != null ? m.getQuantity() : 0;
+                int addQty = inv.getQuantity() != null ? inv.getQuantity() : 0;
+                int newQty = oldQty + addQty;
+                m.setQuantity(newQty);
+                if (inv.getCostPrice() != null && m.getCostPrice() != null && newQty > 0) {
+                    BigDecimal oldValue = m.getCostPrice().multiply(BigDecimal.valueOf(oldQty));
+                    BigDecimal addValue = inv.getCostPrice().multiply(BigDecimal.valueOf(addQty));
+                    m.setCostPrice(oldValue.add(addValue).divide(BigDecimal.valueOf(newQty), 4, RoundingMode.HALF_UP));
+                } else if (inv.getCostPrice() != null) {
+                    m.setCostPrice(inv.getCostPrice());
+                }
+            } else {
+                mergedMap.put(key, inv);
+            }
+        }
+        list = new ArrayList<>(mergedMap.values());
+        log.debug("导出库存 - 实体合并后记录数: {}", list.size());
         // 加载所有仓库，构建层级映射
         List<Warehouse> allWarehouses = warehouseMapper.selectList(null);
         Map<Long, Warehouse> whMap = allWarehouses.stream().collect(Collectors.toMap(Warehouse::getId, w -> w));
@@ -119,6 +155,47 @@ public class InventoryController {
             }
             return vo;
         }).collect(Collectors.toList());
+        // 二次去重：按导出可见字段去重，合并数量与金额
+        log.debug("导出库存 - VO映射后记录数: {}", voList.size());
+        Map<String, InventoryExportVO> voMerged = new LinkedHashMap<>();
+        for (InventoryExportVO vo : voList) {
+            String key = String.join("|",
+                    vo.getProductCode() != null ? vo.getProductCode() : "",
+                    vo.getProductName() != null ? vo.getProductName() : "",
+                    vo.getLevel1Name() != null ? vo.getLevel1Name() : "",
+                    vo.getLevel2Name() != null ? vo.getLevel2Name() : "",
+                    vo.getLevel3Name() != null ? vo.getLevel3Name() : "",
+                    vo.getLevel4Name() != null ? vo.getLevel4Name() : "");
+            InventoryExportVO existing = voMerged.get(key);
+            if (existing != null) {
+                log.warn("导出库存 - 发现重复行已合并: code={}, name={}, warehouse={}/{}/{}/{}, qty1={}, qty2={}",
+                        vo.getProductCode(), vo.getProductName(),
+                        vo.getLevel1Name(), vo.getLevel2Name(), vo.getLevel3Name(), vo.getLevel4Name(),
+                        existing.getQuantity(), vo.getQuantity());
+                existing.setQuantity((existing.getQuantity() != null ? existing.getQuantity() : 0)
+                        + (vo.getQuantity() != null ? vo.getQuantity() : 0));
+                // 重新计算金额（取均价近似）
+                String cp = existing.getCostPrice();
+                if (cp != null && cp.startsWith("¥")) {
+                    try {
+                        BigDecimal price = new BigDecimal(cp.substring(1));
+                        existing.setAmount("¥" + String.format("%.2f",
+                                price.multiply(BigDecimal.valueOf(existing.getQuantity())).doubleValue()));
+                    } catch (NumberFormatException ignored) {}
+                }
+            } else {
+                voMerged.put(key, vo);
+            }
+        }
+        voList = new ArrayList<>(voMerged.values());
+        // 按仓库层级 + 商品编码排序，确保同一仓库的数据连续
+        voList.sort(Comparator
+                .comparing(InventoryExportVO::getLevel1Name, Comparator.nullsLast(String::compareTo))
+                .thenComparing(InventoryExportVO::getLevel2Name, Comparator.nullsLast(String::compareTo))
+                .thenComparing(InventoryExportVO::getLevel3Name, Comparator.nullsLast(String::compareTo))
+                .thenComparing(InventoryExportVO::getLevel4Name, Comparator.nullsLast(String::compareTo))
+                .thenComparing(InventoryExportVO::getProductCode, Comparator.nullsLast(String::compareTo)));
+        log.debug("导出库存 - 最终导出记录数: {}", voList.size());
         ExcelUtil.export(response, voList, "库存列表", InventoryExportVO.class);
     }
 
