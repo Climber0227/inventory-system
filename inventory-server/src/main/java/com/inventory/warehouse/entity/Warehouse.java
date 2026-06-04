@@ -28,4 +28,7 @@ public class Warehouse {
 
     @TableField(exist = false)
     private List<Warehouse> children;
+
+    @TableField(exist = false)
+    private Boolean hasChildren;
 }

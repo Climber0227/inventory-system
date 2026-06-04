@@ -109,6 +109,30 @@ public class WarehouseService {
                 .orderByAsc(Warehouse::getLevel, Warehouse::getId));
     }
 
+    public List<Warehouse> roots() {
+        List<Warehouse> list = warehouseMapper.selectList(new LambdaQueryWrapper<Warehouse>()
+                .eq(Warehouse::getLevel, 1)
+                .eq(Warehouse::getDeleted, 0)
+                .orderByAsc(Warehouse::getId));
+        for (Warehouse w : list) {
+            w.setHasChildren(hasChildren(w.getId()));
+            enrichStats(w);
+        }
+        return list;
+    }
+
+    public List<Warehouse> childrenAll(Long parentId) {
+        List<Warehouse> list = warehouseMapper.selectList(new LambdaQueryWrapper<Warehouse>()
+                .eq(Warehouse::getParentId, parentId)
+                .eq(Warehouse::getDeleted, 0)
+                .orderByAsc(Warehouse::getId));
+        for (Warehouse w : list) {
+            w.setHasChildren(hasChildren(w.getId()));
+            enrichStats(w);
+        }
+        return list;
+    }
+
     public Page<Warehouse> page(Page<Warehouse> page, String name, String contact, String phone,
                                 String address, Integer status, Integer level, Long parentId) {
         LambdaQueryWrapper<Warehouse> wrapper = new LambdaQueryWrapper<Warehouse>()

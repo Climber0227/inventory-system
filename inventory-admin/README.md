@@ -25,13 +25,11 @@ npm run build      # 生产构建，产物在 dist/
 server: {
   port: 3000,
   proxy: {
-    '/api': { target: 'http://localhost:8080', changeOrigin: true },
-    '/uploads': { target: 'http://localhost:8080', changeOrigin: true },
+    '/api': { target: 'http://localhost:8888', changeOrigin: true },
+    '/uploads': { target: 'http://localhost:8888', changeOrigin: true },
   },
 }
 ```
-
-如果后端端口不是 8080，同步修改 target 地址。
 
 ### 2. API 基础路径
 
