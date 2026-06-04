@@ -32,7 +32,19 @@ public class WarehouseController {
         return R.ok(warehouseService.tree());
     }
 
-    @Operation(summary = "获取子级仓库列表")
+    @Operation(summary = "获取根节点仓库（懒加载用）")
+    @GetMapping("/roots")
+    public R<List<Warehouse>> roots() {
+        return R.ok(warehouseService.roots());
+    }
+
+    @Operation(summary = "获取子级仓库列表（含已停用，懒加载用）")
+    @GetMapping("/children-all/{parentId}")
+    public R<List<Warehouse>> childrenAll(@PathVariable Long parentId) {
+        return R.ok(warehouseService.childrenAll(parentId));
+    }
+
+    @Operation(summary = "获取子级仓库列表（仅启用）")
     @GetMapping("/children/{parentId}")
     public R<List<Warehouse>> children(@PathVariable Long parentId) {
         return R.ok(warehouseService.children(parentId));
@@ -69,6 +81,12 @@ public class WarehouseController {
     @Operation(summary = "获取仓库详情")
     @GetMapping("/detail/{id}")
     public R<Warehouse> getById(@PathVariable Long id) {
+        return R.ok(warehouseService.getById(id));
+    }
+
+    @Operation(summary = "根据ID获取仓库（小程序使用）")
+    @GetMapping("/{id}")
+    public R<Warehouse> getByIdShort(@PathVariable Long id) {
         return R.ok(warehouseService.getById(id));
     }
 

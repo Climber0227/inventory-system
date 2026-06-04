@@ -1,50 +1,44 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import request, { downloadFile } from '../../api/request'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '../../store/user'
 
 const userStore = useUserStore()
 const loading = ref(false)
-const fullTree = ref<any[]>([])
+const tableData = ref<any[]>([])
+const isSearchMode = ref(false)
 const dialogVisible = ref(false)
 const parentCandidates = ref<any[]>([])
-const cascadeFilter = ref<number | undefined>(undefined)
 
-const query = ref({ keyword: '', name: '', status: undefined as number | undefined })
+const query = ref({ keyword: '', status: undefined as number | undefined })
 const form = reactive<any>({ name: '', code: '', contact: '', phone: '', address: '', status: 1, remark: '', level: 4, parentId: undefined })
-
-const treeData = computed(() => {
-  if (!cascadeFilter.value || !fullTree.value.length) return fullTree.value
-  const filterNode = (nodes: any[], id: number): any[] => {
-    for (const n of nodes) {
-      if (n.id === id) return [{ ...n, children: undefined }]
-      if (n.children?.length) {
-        const found = filterNode(n.children, id)
-        if (found.length) return [{ ...n, children: found[0].children }]
-      }
-    }
-    return []
-  }
-  return filterNode(fullTree.value, cascadeFilter.value)
-})
 
 async function fetchTree() {
   loading.value = true
   try {
     if (query.value.keyword) {
+      isSearchMode.value = true
       const res = await request.get('/warehouse/search', { params: { keyword: query.value.keyword } })
-      fullTree.value = res.data.data || []
+      tableData.value = (res.data.data || []).filter((w: any) => query.value.status === undefined || w.status === query.value.status)
     } else {
-      const res = await request.get('/warehouse/tree')
-      fullTree.value = res.data.data || []
+      isSearchMode.value = false
+      const res = await request.get('/warehouse/roots')
+      tableData.value = res.data.data || []
     }
   } finally { loading.value = false }
 }
-function handleSearch() { cascadeFilter.value = undefined; fetchTree() }
+
+async function loadChildren(row: any, _treeNode: any, resolve: (data: any[]) => void) {
+  try {
+    const res = await request.get(`/warehouse/children-all/${row.id}`)
+    resolve(res.data.data || [])
+  } catch { resolve([]) }
+}
+
+function handleSearch() { fetchTree() }
 function handleReset() {
-  query.value = { keyword: '', name: '', status: undefined }
-  cascadeFilter.value = undefined
+  query.value = { keyword: '', status: undefined }
   fetchTree()
 }
 
@@ -145,37 +139,24 @@ onMounted(fetchTree)
     </div>
 
     <div class="search-bar">
-      <el-cascader
-        v-model="cascadeFilter"
-        :options="fullTree"
-        :props="{ value: 'id', label: 'name', children: 'children', emitPath: false, checkStrictly: true }"
-        placeholder="按层级筛选"
-        clearable
-        filterable
-        style="width:200px"
-      >
-        <template #default="{ data }">
-          <span>{{ data.name }}</span>
-          <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:6px;">虚拟</el-tag>
-          <span v-else style="font-size:11px;color:#2e7d32;margin-left:6px;">库存{{ data.productCount || 0 }}</span>
-        </template>
-      </el-cascader>
-      <el-input v-model="query.keyword" placeholder="搜索仓库名称/编码" clearable style="width:220px" @keyup.enter="handleSearch" @clear="handleSearch" />
-      <el-input v-model="query.name" placeholder="仓库名称" clearable style="width:160px" @keyup.enter="handleSearch" @clear="handleSearch" />
+      <el-input v-model="query.keyword" placeholder="搜索名称/编码（留空显示全部）" clearable style="width:220px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-select v-model="query.status" placeholder="状态" clearable style="width:120px" @change="handleSearch">
         <el-option label="启用" :value="1" /><el-option label="停用" :value="0" />
       </el-select>
       <el-button type="primary" @click="handleSearch">查询</el-button>
       <el-button @click="handleReset">重置</el-button>
+      <span v-if="isSearchMode" style="font-size:12px;color:#999;margin-left:8px;">🔍 搜索结果，清空搜索显示全部树</span>
     </div>
 
     <div class="table-container">
-      <el-table :data="treeData" v-loading="loading" stripe border row-key="id" :tree-props="{ children: 'children' }" default-expand-all>
+      <el-table :data="tableData" v-loading="loading" stripe border row-key="id"
+        :tree-props="{ children: 'children', hasChildren: 'hasChildren' }"
+        :lazy="!isSearchMode" :load="loadChildren">
         <el-table-column prop="name" label="仓库名称" width="230">
           <template #default="{ row }">
             <span :style="{ fontWeight: row.level === 1 ? 'bold' : 'normal', color: row.status === 0 ? '#999' : '' }">{{ row.name }}</span>
             <el-tag :type="['','primary','success','warning','info'][row.level]" size="small" style="margin-left:6px;">{{ row.level }}级</el-tag>
-            <el-tag v-if="row.children?.length" type="info" size="small" effect="plain" style="margin-left:4px;">虚拟节点</el-tag>
+            <el-tag v-if="row.hasChildren" type="info" size="small" effect="plain" style="margin-left:4px;">虚拟节点</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="code" label="编码" width="200" />

@@ -8,32 +8,105 @@ const router = useRouter()
 
 const loading = ref(false)
 const allList = ref<Inventory[]>([])
-const warehouseTree = ref<any[]>([])
+const rootNodes = ref<any[]>([])
+const selectedWarehouseNode = ref<any[] | null>(null)
+const childrenCache = reactive(new Map<number, any[]>())
 
-const query = ref({ productName: '', warehouseId: undefined as number | undefined })
+const query = ref({ productName: '', warehouseId: undefined as number | undefined, warehouseName: '' })
 
 // 批量选择仓库
 const selectedWarehouseIds = reactive(new Set<number>())
 const selectedCount = computed(() => selectedWarehouseIds.size)
 
-// 收集某个节点下的所有叶子仓库ID
+// 仓库搜索选择器（含上级路径）
+const whSearchLoading = ref(false)
+const whSearchResults = ref<any[]>([])
+const whCache = reactive(new Map<number, any>())
+let searchTimer: any
+async function onWhSearch(queryStr: string) {
+  whSearchResults.value = []
+  if (!queryStr) return
+  clearTimeout(searchTimer)
+  searchTimer = setTimeout(async () => {
+    whSearchLoading.value = true
+    try {
+      const res = await request.get('/warehouse/search', { params: { keyword: queryStr } })
+      whSearchResults.value = res.data.data || []
+      // 异步加载所有上级名称（缓存避免重复请求）
+      async function loadWh(id: number): Promise<any> {
+        if (whCache.has(id)) return whCache.get(id)
+        try {
+          const r = await request.get(`/warehouse/${id}`)
+          if (r.data.data) whCache.set(id, r.data.data)
+          return r.data.data
+        } catch { return null }
+      }
+      const pendingIds = new Set<number>()
+      for (const w of whSearchResults.value) {
+        let pid = w.parentId
+        while (pid) { pendingIds.add(pid); pid = null }
+      }
+      for (const pid of pendingIds) {
+        const node = await loadWh(pid)
+        if (node?.parentId) await loadWh(node.parentId) // 再上一级
+      }
+    } finally { whSearchLoading.value = false }
+  }, 300)
+}
+function getParentPath(w: any): string {
+  const parts: string[] = []
+  const seen = new Set<number>()
+  let pid = w.parentId
+  while (pid && whCache.has(pid) && !seen.has(pid)) {
+    seen.add(pid)
+    parts.unshift(whCache.get(pid).name)
+    pid = whCache.get(pid).parentId
+  }
+  return parts.length ? ' · ' + parts.join(' / ') : ''
+}
+async function onWarehouseSelect(val: any) {
+  query.value.warehouseId = val ?? undefined
+  if (val) {
+    expanded.clear()
+    const ancestorIds: number[] = []
+    async function loadParentChain(id: number): Promise<any> {
+      const res = await request.get(`/warehouse/${id}`)
+      const node = res.data.data
+      if (!node) return null
+      if (node.parentId) {
+        ancestorIds.push(node.parentId)
+        const parent = await loadParentChain(node.parentId)
+        if (parent) {
+          parent.children = [node]
+          return parent
+        }
+      }
+      return node
+    }
+    const tree = await loadParentChain(val)
+    ancestorIds.forEach(id => expanded.add(id))
+    selectedWarehouseNode.value = tree ? [tree] : []
+  } else {
+    selectedWarehouseNode.value = null
+  }
+  fetchData()
+}
+
+// 收集某个节点下的所有叶子仓库ID（仅已加载的子节点）
 function collectLeafIds(node: any): number[] {
   if (!node.children || node.children.length === 0) return [node.id]
   return node.children.flatMap((c: any) => collectLeafIds(c))
 }
-
 function isNodeChecked(node: any): boolean {
   const leafIds = collectLeafIds(node)
   return leafIds.length > 0 && leafIds.every((id: number) => selectedWarehouseIds.has(id))
 }
-
 function isNodeIndeterminate(node: any): boolean {
   const leafIds = collectLeafIds(node)
   const some = leafIds.some((id: number) => selectedWarehouseIds.has(id))
   const all = leafIds.every((id: number) => selectedWarehouseIds.has(id))
   return some && !all
 }
-
 function toggleWarehouseSelect(node: any) {
   const leafIds = collectLeafIds(node)
   if (isNodeChecked(node)) {
@@ -54,19 +127,39 @@ async function fetchData() {
   } finally { loading.value = false }
 }
 
-async function fetchWarehouseTree() {
-  const res = await request.get('/warehouse/tree')
-  warehouseTree.value = res.data.data || []
+async function fetchWarehouseRoots() {
+  try {
+    const res = await request.get('/warehouse/roots')
+    rootNodes.value = res.data.data || []
+  } catch { /* handled */ }
 }
 
-// 展开状态追踪
+// 展开/收起（懒加载子节点）
 const expanded = reactive(new Set<number>())
-function toggle(id: number) { expanded.has(id) ? expanded.delete(id) : expanded.add(id) }
+async function toggle(id: number) {
+  if (expanded.has(id)) {
+    expanded.delete(id)
+  } else {
+    if (!childrenCache.has(id)) {
+      const res = await request.get(`/warehouse/children-all/${id}`)
+      childrenCache.set(id, res.data.data || [])
+    }
+    expanded.add(id)
+  }
+}
 function isExpanded(id: number) { return expanded.has(id) }
 
 function handleSearch() { selectedWarehouseIds.clear(); fetchData() }
-function handleReset() { query.value = { productName: '', warehouseId: undefined }; fetchData(); expanded.clear(); selectedWarehouseIds.clear() }
-function handleWarehouseFilterChange() { selectedWarehouseIds.clear(); fetchData() }
+function handleReset() {
+  query.value = { productName: '', warehouseId: undefined, warehouseName: '' }
+  selectedWarehouseNode.value = null
+  rootNodes.value = []
+  childrenCache.clear()
+  expanded.clear()
+  selectedWarehouseIds.clear()
+  fetchWarehouseRoots()
+  fetchData()
+}
 function handleExport() {
   selectedWarehouseIds.clear()
   const warehouseId = query.value.warehouseId
@@ -90,37 +183,20 @@ const invByWarehouse = computed(() => {
   return map
 })
 
-// 给仓库树注入库存数据
+// 给仓库树注入库存数据（使用 childrenCache 替代直接 children 属性）
 function buildTreeWithStock(nodes: any[]): any[] {
   return nodes.map(n => {
     const invs = invByWarehouse.value.get(n.id) || []
     const qty = invs.reduce((s: number, i: any) => s + (i.quantity || 0), 0)
     const amt = invs.reduce((s: number, i: any) => s + ((i.costPrice || 0) * (i.quantity || 0)), 0)
-    const node = { ...n, _pc: invs.length, _qty: qty, _amt: amt }
-    if (n.children?.length) {
-      node.children = buildTreeWithStock(n.children)
+    const cachedChildren = childrenCache.get(n.id)
+    const node: any = { ...n, _pc: invs.length, _qty: qty, _amt: amt }
+    if (cachedChildren?.length) {
+      node.children = buildTreeWithStock(cachedChildren)
     }
     return node
   })
 }
-
-// 当级联选择了仓库时，裁剪树只显示该仓库及其子节点
-function pruneTree(nodes: any[], targetId: number): any[] | null {
-  for (const n of nodes) {
-    if (n.id === targetId) return [n]
-    if (n.children?.length) {
-      const found = pruneTree(n.children, targetId)
-      if (found) return found
-    }
-  }
-  return null
-}
-
-const displayTree = computed(() => {
-  const tree = warehouseTree.value
-  if (!query.value.warehouseId) return tree
-  return pruneTree(tree, query.value.warehouseId) || tree
-})
 
 // 展平树为列表，depth 用于缩进；跳过收起分支
 function flattenTree(nodes: any[], depth = 0): any[] {
@@ -134,7 +210,10 @@ function flattenTree(nodes: any[], depth = 0): any[] {
   return result
 }
 
-const flatList = computed(() => flattenTree(buildTreeWithStock(displayTree.value)))
+const flatList = computed(() => {
+  const source = selectedWarehouseNode.value || rootNodes.value
+  return flattenTree(buildTreeWithStock(source))
+})
 
 // 合计
 const grandTotal = computed(() => {
@@ -143,7 +222,7 @@ const grandTotal = computed(() => {
   return { qty, amt }
 })
 
-onMounted(() => { fetchWarehouseTree(); fetchData() })
+onMounted(() => { fetchWarehouseRoots(); fetchData() })
 </script>
 
 <template>
@@ -159,7 +238,23 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
 
     <div class="search-bar">
       <el-input v-model="query.productName" placeholder="商品名称/编码" clearable style="width:200px" @keyup.enter="handleSearch" @clear="handleSearch" />
-      <el-tree-select v-model="query.warehouseId" :data="warehouseTree" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="全部仓库" clearable filterable style="width:220px" @change="handleWarehouseFilterChange" />
+      <el-select
+        v-model="query.warehouseId"
+        :remote-method="onWhSearch"
+        :loading="whSearchLoading"
+        filterable
+        remote
+        clearable
+        placeholder="搜索仓库名称"
+        style="width:220px"
+        @change="onWarehouseSelect"
+      >
+        <el-option v-for="w in whSearchResults" :key="w.id" :label="w.name" :value="w.id">
+          <span style="font-size:12px;color:#999;margin-right:4px;">{{ w.code }}</span>
+          {{ w.name }}
+          <span style="font-size:11px;color:#aaa;">{{ getParentPath(w) }}</span>
+        </el-option>
+      </el-select>
       <el-button type="primary" @click="handleSearch">查询</el-button>
       <el-button @click="handleReset">重置</el-button>
     </div>
@@ -169,7 +264,7 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
 
       <div v-for="node in flatList" :key="node.id" class="tree-row" :style="{ paddingLeft: (node.depth * 24 + 16) + 'px' }">
         <div class="tree-node" :class="'level-' + node.level">
-          <span v-if="node.children?.length" class="toggle-icon" @click="toggle(node.id)">{{ isExpanded(node.id) ? '▼' : '▶' }}</span>
+          <span v-if="node.children?.length || node.hasChildren" class="toggle-icon" @click="toggle(node.id)">{{ isExpanded(node.id) ? '▼' : '▶' }}</span>
           <span v-else class="toggle-icon" style="visibility:hidden;">▶</span>
           <el-checkbox
             :model-value="isNodeChecked(node)"
@@ -178,9 +273,10 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
             @click.stop
             @change="toggleWarehouseSelect(node)"
           />
-          <span class="node-name" @click="node.children?.length && toggle(node.id)">{{ node.name }}</span>
+          <span class="node-name" @click="toggle(node.id)">{{ node.name }}</span>
+          <span class="node-code-index">{{ node.code }}</span>
           <el-tag size="small" :type="['primary','success','warning','info'][node.level-1] || 'info'">{{ node.level }}级</el-tag>
-          <el-tag v-if="node.children?.length" size="small" type="info" effect="plain" style="margin-left:4px;">虚拟节点</el-tag>
+          <el-tag v-if="node.hasChildren" size="small" type="info" effect="plain" style="margin-left:4px;">虚拟节点</el-tag>
           <span class="node-stats" v-if="node._pc">
             <span class="stats-badge">{{ node._pc }} 种商品</span>
             <span class="stats-badge">{{ node._qty }} 件</span>
@@ -188,15 +284,14 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
           </span>
         </div>
         <!-- 叶子节点：库存汇总条 -->
-        <div v-if="!node.children?.length && node._pc" class="leaf-summary">
+        <div v-if="!node.hasChildren && node._pc" class="leaf-summary">
           📦 {{ node.name }} · {{ node._pc }} 种商品 · 共 {{ node._qty }} 件 · 金额 ¥{{ node._amt.toFixed(2) }}
         </div>
         <!-- 叶子节点：展示库存表格 -->
-        <div v-if="!node.children?.length && node._pc" class="leaf-inventory">
+        <div v-if="!node.hasChildren && node._pc" class="leaf-inventory">
           <el-table :data="invByWarehouse.get(node.id) || []" stripe border size="small">
             <el-table-column prop="productCode" label="编码" width="100" />
             <el-table-column prop="productName" label="商品" min-width="130" />
-            <!-- <el-table-column prop="batchNo" label="批次" width="80" /> -->
             <el-table-column prop="quantity" label="数量" width="70" align="center">
               <template #default="{ row }"><span style="font-weight:600;">{{ row.quantity }}</span></template>
             </el-table-column>
@@ -233,6 +328,7 @@ onMounted(() => { fetchWarehouseTree(); fetchData() })
 .tree-node.level-4 { cursor: default; font-size: 13px; }
 .toggle-icon { font-size: 10px; color: #909399; width: 12px; text-align: center; flex-shrink: 0; }
 .node-name { color: #303133; font-weight: 600; white-space: nowrap; }
+.node-code-index { font-size: 11px; color: #909399; background: #f5f5f5; padding: 0 6px; border-radius: 3px; line-height: 20px; flex-shrink: 0; }
 .node-stats { font-size: 13px; font-weight: 600; margin-left: auto; white-space: nowrap; display: flex; gap: 6px; align-items: center; }
 .stats-badge {
   background: #ecf5ff; color: #409eff; padding: 2px 8px; border-radius: 4px; font-size: 12px;
