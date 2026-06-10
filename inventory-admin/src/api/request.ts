@@ -5,7 +5,7 @@ import { ElMessage } from 'element-plus'
 
 const request = axios.create({
   baseURL: import.meta.env.VITE_API_BASE || '/api/v1',
-  timeout: 60000,
+  timeout: 300000, // 5 分钟（大文件导入导出需要）
 })
 
 request.interceptors.request.use((config) => {

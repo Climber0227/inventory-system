@@ -36,8 +36,11 @@ async function fetchData() {
 function handleSearch() { query.page = 1; fetchData() }
 function handleReset() { query.orderNo = ''; query.status = undefined; query.startDate = ''; query.endDate = ''; query.supplierId = undefined; query.warehouseId = undefined; query.minQuantity = undefined; query.maxQuantity = undefined; handleSearch() }
 async function handleCancel(row: PurchaseOrder) {
-  await request.put(`/purchase-order/${row.id}/cancel`)
-  ElMessage.success('已取消'); fetchData()
+  try {
+    await ElMessageBox.confirm(`确定取消入库单「${row.orderNo}」？`, { title: '取消确认', type: 'warning', confirmButtonText: '确定取消', cancelButtonText: '返回' })
+    await request.put(`/purchase-order/${row.id}/cancel`)
+    ElMessage.success('已取消'); fetchData()
+  } catch {}
 }
 async function handleDelete(row: PurchaseOrder) {
   try {
@@ -90,7 +93,7 @@ async function handleBatchDelete() {
   } catch {}
 }
 async function fetchSuppliers() { const res = await request.get('/supplier/list'); suppliers.value = res.data.data }
-async function fetchWarehouses() { const res = await request.get('/warehouse/tree'); warehouses.value = res.data.data || [] }
+async function fetchWarehouses() { const res = await request.get('/warehouse/tree?stats=false'); warehouses.value = res.data.data || [] }
 function handleExport(selected = false) {
   const url = selected && selectedIds.value.length ? `/purchase-order/export?ids=${selectedIds.value.join(',')}` : '/purchase-order/export'
   downloadFile(url, '采购入库.xlsx')
@@ -161,11 +164,10 @@ onMounted(() => { fetchData(); fetchSuppliers(); fetchWarehouses() })
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="router.push(`/purchase/${row.id}`)">详情</el-button>
+            <el-button v-if="row.status === 0" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
             <el-button v-if="row.status === 0" size="small" @click="router.push(`/purchase/create?edit=${row.id}`)">编辑</el-button>
             <el-button v-if="userStore.isAdmin && row.status === 4" size="small" type="success" @click="handleApprove(row)">通过</el-button>
             <el-button v-if="userStore.isAdmin && row.status === 4" size="small" type="warning" @click="handleReject(row)">驳回</el-button>
-            <el-button v-if="row.status === 0" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
-            <el-button v-if="userStore.isAdmin && row.status === 1" size="small" type="warning" @click="handleCancel(row)">取消入库</el-button>
             <el-button v-if="userStore.isAdmin && (row.status === 0 || row.status === 2)" size="small" type="danger" @click="handleDelete(row)">作废</el-button>
           </template>
         </el-table-column>

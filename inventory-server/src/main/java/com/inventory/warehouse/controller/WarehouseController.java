@@ -1,6 +1,7 @@
 package com.inventory.warehouse.controller;
 
 import cn.dev33.satoken.annotation.SaCheckRole;
+import com.inventory.common.annotation.RepeatSubmit;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.inventory.common.result.PageResult;
 import com.inventory.common.result.R;
@@ -28,8 +29,8 @@ public class WarehouseController {
 
     @Operation(summary = "获取仓库树形结构")
     @GetMapping("/tree")
-    public R<List<Warehouse>> tree() {
-        return R.ok(warehouseService.tree());
+    public R<List<Warehouse>> tree(@RequestParam(defaultValue = "true") boolean stats) {
+        return R.ok(warehouseService.tree(stats));
     }
 
     @Operation(summary = "获取根节点仓库（懒加载用）")
@@ -170,17 +171,26 @@ public class WarehouseController {
     }
 
     @SaCheckRole("role_1")
+    @RepeatSubmit(interval = 5000)
     @Operation(summary = "导入仓库")
     @PostMapping("/import")
-    public R<String> importExcel(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+    public R<java.util.Map<String, Object>> importExcel(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        com.inventory.warehouse.service.WarehouseImportListener listener =
+                new com.inventory.warehouse.service.WarehouseImportListener(warehouseService);
         try {
-            List<WarehouseImportVO> rows = com.alibaba.excel.EasyExcel.read(file.getInputStream())
-                    .head(WarehouseImportVO.class).sheet().doReadSync();
-            int count = warehouseService.importExcel(rows);
-            return R.ok("导入成功，共创建 " + count + " 个仓库");
+            com.alibaba.excel.EasyExcel.read(file.getInputStream(), WarehouseImportVO.class, listener)
+                    .sheet().doRead();
         } catch (Exception e) {
             throw new com.inventory.common.exception.BusinessException("导入失败: " + e.getMessage());
         }
+        com.inventory.common.util.ImportResult r = listener.getResult();
+        java.util.Map<String, Object> map = new java.util.HashMap<>();
+        map.put("success", r.getSuccess());
+        map.put("failure", r.getFailure());
+        map.put("total", r.getTotal());
+        map.put("summary", r.getSummary());
+        map.put("errors", r.getErrors());
+        return R.ok(map);
     }
 
     @SaCheckRole("role_1")

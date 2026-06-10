@@ -3,6 +3,9 @@ import { ref, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
+import { useUserStore } from '@/store/user'
+
+const userStore = useUserStore()
 
 // 图片基础路径，从 API 请求地址提取（去掉 /api/v1）
 const API_HOST = 'http://192.168.10.162:8080'
@@ -31,19 +34,32 @@ const form = ref({
 })
 
 let id = null
-onLoad((options) => { id = options?.id; fetchDetail() })
+const isCreate = ref(false)
+
+onLoad(async (options) => {
+  id = options?.id
+  // 加载分类（编辑和新建都需要）
+  try {
+    const cRes = await request.get('/category/tree')
+    categories.value = cRes.data || []
+    flatCategories.value = flattenTree(categories.value)
+  } catch {}
+  if (id) {
+    fetchDetail()
+  } else {
+    // 新建模式
+    isCreate.value = true
+    product.value = { status: 1 }
+    editing.value = true
+  }
+})
 
 async function fetchDetail() {
   if (!id) return
   loading.value = true
   try {
-    const [pRes, cRes] = await Promise.all([
-      request.get(`/product/${id}`),
-      request.get('/category/tree'),
-    ])
+    const pRes = await request.get(`/product/${id}`)
     product.value = pRes.data
-    categories.value = cRes.data || []
-    flatCategories.value = flattenTree(categories.value)
     Object.assign(form.value, {
       name: pRes.data.name, spec: pRes.data.spec || '', unit: pRes.data.unit || '',
       categoryId: pRes.data.categoryId,
@@ -92,10 +108,16 @@ async function handleSave() {
   if (!form.value.name) { uni.showToast({ title: '商品名称不能为空', icon: 'none' }); return }
   loading.value = true
   try {
-    await request.put(`/product/${id}`, form.value)
-    uni.showToast({ title: '保存成功', icon: 'success' })
-    editing.value = false
-    fetchDetail()
+    if (isCreate.value) {
+      await request.post('/product', form.value)
+      uni.showToast({ title: '创建成功', icon: 'success' })
+      uni.navigateBack()
+    } else {
+      await request.put(`/product/${id}`, form.value)
+      uni.showToast({ title: '保存成功', icon: 'success' })
+      editing.value = false
+      fetchDetail()
+    }
   } finally { loading.value = false }
 }
 
@@ -114,26 +136,31 @@ function toggleEdit() {
 
     <view v-else-if="product">
       <view class="detail-header">
-        <!-- 商品图片 -->
-        <view class="img-wrap">
-          <image v-if="product.imageUrl" :src="imgUrl(product.imageUrl)" mode="widthFix" class="product-img" @click="uni.previewImage({urls:[imgUrl(product.imageUrl)]})" @error="product.imageUrl = ''" />
-          <view v-else class="img-placeholder" style="width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;border-radius:8px;margin:0 auto 12px;">
-            <text style="font-size:32px;color:#ccc;">📷</text>
+        <!-- 新建模式 -->
+        <template v-if="isCreate">
+          <text class="dh-name">新建商品</text>
+        </template>
+        <template v-else>
+          <view class="img-wrap">
+            <image v-if="product.imageUrl" :src="imgUrl(product.imageUrl)" mode="widthFix" class="product-img" @click="uni.previewImage({urls:[imgUrl(product.imageUrl)]})" @error="product.imageUrl = ''" />
+            <view v-else class="img-placeholder" style="width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;border-radius:8px;margin:0 auto 12px;">
+              <text style="font-size:32px;color:#ccc;">📷</text>
+            </view>
           </view>
-        </view>
-        <text class="dh-name">{{ product.name }}</text>
-        <text class="dh-code">{{ product.code }}</text>
-        <view class="dh-tags">
-          <text class="dh-tag" :class="product.status === 1 ? 'tag-on' : 'tag-off'">{{ product.status === 1 ? '启用' : '停用' }}</text>
-          <text class="dh-tag tag-cat">{{ product.categoryName || '未分类' }}</text>
-        </view>
+          <text class="dh-name">{{ product.name }}</text>
+          <text class="dh-code">{{ product.code }}</text>
+          <view class="dh-tags">
+            <text class="dh-tag" :class="product.status === 1 ? 'tag-on' : 'tag-off'">{{ product.status === 1 ? '启用' : '停用' }}</text>
+            <text class="dh-tag tag-cat">{{ product.categoryName || '未分类' }}</text>
+          </view>
+        </template>
       </view>
 
       <!-- 查看模式 -->
       <view class="section" v-if="!editing">
         <view class="info-row"><text class="il">规格</text><text class="iv">{{ product.spec || '-' }}</text></view>
         <view class="info-row"><text class="il">单位</text><text class="iv">{{ product.unit || '-' }}</text></view>
-        <view class="info-row"><text class="il">采购价</text><text class="iv price">¥{{ product.purchasePrice ?? '-' }}</text></view>
+        <view v-if="userStore.isAdmin" class="info-row"><text class="il">采购价</text><text class="iv price">¥{{ product.purchasePrice ?? '-' }}</text></view>
         <view class="info-row"><text class="il">销售价</text><text class="iv price">¥{{ product.salePrice ?? '-' }}</text></view>
         <view class="info-row"><text class="il">最低库存</text><text class="iv">{{ product.minStock }}</text></view>
         <view class="info-row"><text class="il">最高库存</text><text class="iv">{{ product.maxStock }}</text></view>
@@ -173,7 +200,7 @@ function toggleEdit() {
           </picker>
         </view>
         <view class="form-row">
-          <view class="form-item" style="flex:1;">
+          <view v-if="userStore.isAdmin" class="form-item" style="flex:1;">
             <text class="label">采购价</text>
             <input v-model="form.purchasePrice" class="input" type="digit" placeholder="0.00" />
           </view>
@@ -198,12 +225,12 @@ function toggleEdit() {
         </view>
       </view>
 
-      <button class="action-btn" :class="editing ? 'btn-save' : 'btn-edit'" :loading="loading" @click="toggleEdit">
-        {{ editing ? '保存' : '编辑' }}
+      <button v-if="userStore.isAdmin" class="action-btn" :class="editing ? 'btn-save' : 'btn-edit'" :loading="loading" @click="toggleEdit">
+        {{ isCreate ? '创建商品' : editing ? '保存' : '编辑' }}
       </button>
     </view>
 
-    <view v-else style="text-align:center;padding:40px;color:#999;">未找到该商品</view>
+    <view v-else-if="!isCreate" style="text-align:center;padding:40px;color:#999;">未找到该商品</view>
     <FloatingHome />
   </view>
 </template>

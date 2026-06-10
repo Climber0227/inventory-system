@@ -1,12 +1,21 @@
 <script setup>
 import { onLaunch } from '@dcloudio/uni-app'
 import { useUserStore } from './store/user'
+import request from './api/request'
 
-onLaunch(() => {
+onLaunch(async () => {
   const userStore = useUserStore()
   const token = uni.getStorageSync('token')
   if (token) {
     userStore.token = token
+    try {
+      const res = await request.get('/auth/userinfo')
+      userStore.userInfo = res.data
+    } catch {
+      // token 过期或无效，清除
+      userStore.token = ''
+      uni.removeStorageSync('token')
+    }
   }
 })
 </script>

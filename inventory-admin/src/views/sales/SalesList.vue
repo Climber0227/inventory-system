@@ -39,7 +39,13 @@ async function fetchData() {
 }
 function handleSearch() { query.page = 1; fetchData() }
 function handleReset() { query.orderNo = ''; query.customerId = undefined; query.warehouseId = undefined; query.minQuantity = undefined; query.maxQuantity = undefined; query.minAmount = undefined; query.maxAmount = undefined; query.salesman = ''; query.status = undefined; query.startDate = ''; query.endDate = ''; handleSearch() }
-async function handleCancel(row: SalesOrder) { await request.put(`/sales-order/${row.id}/cancel`); ElMessage.success('已取消'); fetchData() }
+async function handleCancel(row: SalesOrder) {
+  try {
+    await ElMessageBox.confirm(`确定取消出库单「${row.orderNo}」？`, { title: '取消确认', type: 'warning', confirmButtonText: '确定取消', cancelButtonText: '返回' })
+    await request.put(`/sales-order/${row.id}/cancel`)
+    ElMessage.success('已取消'); fetchData()
+  } catch {}
+}
 async function handleDelete(row: SalesOrder) {
   try {
     const { value } = await ElMessageBox.prompt(`确定作废出库单「${row.orderNo}」？`, {
@@ -112,7 +118,7 @@ function getSummaries(param: { columns: any[]; data: any[] }) {
 onMounted(async () => {
   const [cRes, wRes] = await Promise.all([
     request.get('/customer/list'),
-    request.get('/warehouse/tree'),
+    request.get('/warehouse/tree?stats=false'),
   ])
   customers.value = cRes.data.data
   warehouses.value = wRes.data.data || []
@@ -169,11 +175,10 @@ onMounted(async () => {
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="router.push(`/sales/${row.id}`)">详情</el-button>
+            <el-button v-if="row.status === 0" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
             <el-button v-if="row.status === 0" size="small" @click="router.push(`/sales/create?edit=${row.id}`)">编辑</el-button>
             <el-button v-if="userStore.isAdmin && row.status === 4" size="small" type="success" @click="handleApprove(row)">通过</el-button>
             <el-button v-if="userStore.isAdmin && row.status === 4" size="small" type="warning" @click="handleReject(row)">驳回</el-button>
-            <el-button v-if="row.status === 0" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
-            <el-button v-if="userStore.isAdmin && row.status === 1" size="small" type="warning" @click="handleCancel(row)">取消出库</el-button>
             <el-button v-if="userStore.isAdmin && (row.status === 0 || row.status === 2)" size="small" type="danger" @click="handleDelete(row)">作废</el-button>
           </template>
         </el-table-column>

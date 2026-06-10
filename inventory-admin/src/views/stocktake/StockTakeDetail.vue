@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import request from '../../api/request'
 import type { StockTake } from '../../types/api'
@@ -9,10 +9,9 @@ const route = useRoute()
 const router = useRouter()
 const loading = ref(false)
 const order = ref<any>(null)
-const products = ref<any[]>([])
-const warehouseStock = ref<Record<number, number>>({})
+const whInventory = ref<any[]>([])
 const editing = ref(false)
-const addProductId = ref<number | undefined>(undefined)
+const addProductId = ref<string>('')
 
 const statusMap: Record<number, { label: string; type: string }> = {
   0: { label: '盘点中', type: 'warning' },
@@ -25,6 +24,14 @@ async function fetchDetail() {
   try {
     const res = await request.get(`/stock-take/${route.params.id}`)
     order.value = res.data.data
+    // 给每个明细补充库存批次的入库时间
+    if (order.value?.items) {
+      for (const item of order.value.items) {
+        const inv = whInventory.value.find((i: any) =>
+          i.productId === item.productId && i.batchNo === item.batchNo)
+        if (inv) item.stockDate = inv.createTime?.substring(0, 16) || ''
+      }
+    }
   } catch {
     ElMessage.error('获取盘点单详情失败')
     order.value = null
@@ -34,26 +41,19 @@ async function fetchDetail() {
 // 添加盘点项（抽盘用）
 async function handleAddItem() {
   if (!order.value || !addProductId.value) { ElMessage.warning('请选择商品'); return }
-
-  // 检查是否已添加该商品
-  const exists = order.value.items?.some((item: any) => item.productId === addProductId.value)
-  if (exists) {
-    try {
-      await ElMessageBox.confirm('该商品已在盘点明细中，确定再次添加？', { title: '重复商品', type: 'warning' })
-    } catch {
-      return // 用户取消
-    }
-  }
+  const parts = addProductId.value.split('|')
+  const pid = Number(parts[0])
+  const batchNo = parts[1] || ''
 
   try {
     await request.post('/stock-take/item', {
       stockTakeId: order.value.id,
-      productId: addProductId.value,
-      // 不传 actualQty，后端会自动设为账面数量
+      productId: pid,
+      batchNo: batchNo,
       diffReason: '',
     })
     ElMessage.success('已添加')
-    addProductId.value = undefined
+    addProductId.value = ''
     fetchDetail()
   } catch { /* handled */ }
 }
@@ -93,20 +93,27 @@ async function handleDeleteItem(itemId: number) {
   ElMessage.success('已删除'); fetchDetail()
 }
 
+const availableProducts = computed(() => {
+  return whInventory.value
+    .filter((inv: any) => inv.productId && (inv.quantity || 0) > 0)
+    .map((inv: any) => ({
+      productId: inv.productId,
+      productName: inv.productName || '',
+      productCode: inv.productCode || '',
+      qty: inv.quantity || 0,
+      batchNo: inv.batchNo || '',
+      stockDate: inv.createTime?.substring(0, 16) || '',
+    }))
+})
+
 async function fetchProducts() {
   try {
-    const [pRes, iRes] = await Promise.all([
-      request.get('/product/list'),
-      order.value?.warehouseId ? request.get('/inventory/page', { params: { warehouseId: order.value.warehouseId, page: 1, size: 1000 } }) : Promise.resolve({ data: { data: { records: [] } } }),
-    ])
-    products.value = pRes.data.data || []
-    const records = iRes.data.data.records || []
-    const stock: Record<number, number> = {}
-    for (const r of records) {
-      stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
+    if (order.value?.warehouseId) {
+      const iRes = await request.get('/inventory/page', { params: { warehouseId: order.value.warehouseId, page: 1, size: 9999 } })
+      whInventory.value = (iRes.data.data.records || []).filter((r: any) => r.quantity > 0)
+      whInventory.value.sort((a: any, b: any) => (b.createTime || '').localeCompare(a.createTime || ''))
     }
-    warehouseStock.value = stock
-  } catch { /* ignore */ }
+  } catch { whInventory.value = [] }
 }
 
 onMounted(() => { fetchDetail().then(() => fetchProducts()) })
@@ -146,10 +153,15 @@ onMounted(() => { fetchDetail().then(() => fetchProducts()) })
         <h3 style="margin:0;">盘点明细</h3>
         <div v-if="order.status === 0 && order.takeType === 1" style="display:flex;gap:8px;">
           <el-select v-model="addProductId" filterable placeholder="选择商品添加" style="width:260px;">
-            <el-option v-for="p in products" :key="p.id" :value="p.id" :label="`${p.name} (${p.code}) 库存:${warehouseStock[p.id] ?? 0}`">
-              <span style="display:flex;justify-content:space-between;width:100%;">
-                <span>{{ p.name }} ({{ p.code }})</span>
-                <span :style="{ color: (warehouseStock[p.id] || 0) > 0 ? '#2e7d32' : '#f56c6c', fontWeight: 'bold' }">库存:{{ warehouseStock[p.id] ?? 0 }}</span>
+            <el-option v-for="p in availableProducts" :key="p.productId + '_' + p.stockDate + '_' + p.batchNo"
+              :value="p.productId + '|' + p.batchNo" :label="`${p.productName} (${p.productCode}) ${p.qty}件 ${p.stockDate}`">
+              <span style="display:flex;justify-content:space-between;width:100%;font-size:13px;">
+                <span>{{ p.productName }} <span style="color:#999;">({{ p.productCode }})</span></span>
+                <span style="display:flex;gap:12px;">
+                  <span style="color:#2e7d32;font-weight:600;">{{ p.qty }}件</span>
+                  <span style="color:#666;font-size:11px;">{{ p.stockDate }}</span>
+                  <span v-if="p.batchNo" style="color:#bbb;font-size:11px;">{{ p.batchNo }}</span>
+                </span>
               </span>
             </el-option>
           </el-select>
@@ -159,7 +171,12 @@ onMounted(() => { fetchDetail().then(() => fetchProducts()) })
       <el-table :data="order.items || []" border stripe>
         <el-table-column prop="productName" label="商品" min-width="160" />
         <el-table-column prop="productCode" label="编码" width="110" />
-        <!-- <el-table-column prop="batchNo" label="批次" width="120" /> -->
+        <el-table-column label="批次/入库时间" min-width="180">
+          <template #default="{ row }">
+            <span style="font-size:12px;">{{ row.batchNo || '-' }}</span>
+            <span v-if="row.stockDate" style="color:#999;font-size:11px;display:block;">{{ row.stockDate }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="bookQty" label="账面数" width="80" />
         <el-table-column label="实盘数" width="100">
           <template #default="{ row }">

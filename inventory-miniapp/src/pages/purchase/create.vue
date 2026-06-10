@@ -3,6 +3,9 @@ import { ref, onMounted, computed } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
+import { useUserStore } from '@/store/user'
+
+const userStore = useUserStore()
 
 const editingId = ref(null)
 const suppliers = ref([])
@@ -77,6 +80,11 @@ const form = ref({
 })
 
 onLoad((options) => {
+  // 非管理员跳转首页
+  if (!userStore.isAdmin) {
+    uni.redirectTo({ url: '/pages/home/home' })
+    return
+  }
   if (options?.id) editingId.value = Number(options.id)
 })
 
@@ -317,6 +325,7 @@ async function handleSubmit() {
         <text class="section-title">商品明细</text>
         <text class="add-link" @click="addItem">+ 添加</text>
       </view>
+      <text class="scan-hint">提示：请手动添加商品，或使用右侧 📱 按钮扫条码快速选择</text>
       <view v-for="(item, index) in form.items" :key="index" class="item-card">
         <view class="item-header">
           <text>商品 {{ index + 1 }}</text>
@@ -326,7 +335,7 @@ async function handleSubmit() {
           <view class="picker picker-select" @click="openPicker(index)" style="flex:1;overflow:hidden;">
             {{ item.productName || '选择商品' }}
           </view>
-          <view class="scan-btn" @click="scanCode(index)">📷</view>
+          <view class="scan-btn" @click="scanCode(index)">📱</view>
         </view>
         <view v-if="item.productId" class="selected-info">
           <text>规格: {{ item.spec || '-' }}</text>
@@ -409,6 +418,7 @@ async function handleSubmit() {
 .btn-submit { flex:1; background: #2e7d32; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 15px; }
 .ic-row { display: flex; align-items: center; gap: 8px; }
 .scan-btn { width: 40px; height: 40px; background: #e8f5e9; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.scan-hint { display: block; font-size: 11px; color: #999; margin-bottom: 8px; }
 .picker-select:active { background: #e8f5e9; }
 .picker-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; display: flex; align-items: flex-end; }
 .picker-modal { background: #fff; border-radius: 16px 16px 0 0; width: 100%; max-height: 70vh; display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box; }

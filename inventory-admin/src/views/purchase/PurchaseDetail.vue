@@ -102,7 +102,7 @@ onMounted(fetchDetail)
         <el-table-column prop="productName" label="商品名称" min-width="160" />
         <el-table-column prop="productCode" label="编码" width="120" />
         <el-table-column prop="quantity" label="数量" width="80" />
-        <el-table-column prop="unitPrice" label="单价" width="100">
+        <el-table-column v-if="userStore.isAdmin" prop="unitPrice" label="单价" width="100">
           <template #default="{ row }">¥{{ row.unitPrice?.toFixed(2) }}</template>
         </el-table-column>
         <el-table-column prop="amount" label="金额" width="100">

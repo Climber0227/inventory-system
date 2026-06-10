@@ -30,9 +30,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -76,30 +74,20 @@ public class PurchaseOrderService {
                 .le(endDate != null, PurchaseOrder::getOrderDate, endDate)
                 .orderByDesc(PurchaseOrder::getId);
 
-        // 默认排除已作废
         wrapper.ne(PurchaseOrder::getStatus, OrderStatus.VOIDED);
         if (status != null) wrapper.eq(PurchaseOrder::getStatus, status);
         if (minQuantity != null) wrapper.ge(PurchaseOrder::getTotalQuantity, minQuantity);
         if (maxQuantity != null) wrapper.le(PurchaseOrder::getTotalQuantity, maxQuantity);
 
         Page<PurchaseOrder> result = purchaseOrderMapper.selectPage(page, wrapper);
-        for (PurchaseOrder o : result.getRecords()) {
-            enrichOrder(o);
-            // 加载 items 以便前端显示采购单价
-            List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(
-                    new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getOrderId, o.getId()));
-            enrichItems(items);
-            o.setItems(items);
-        }
+        enrichOrdersBatch(result.getRecords());
         return result;
     }
 
     public List<PurchaseOrder> listAll() {
         List<PurchaseOrder> list = purchaseOrderMapper.selectList(
                 new LambdaQueryWrapper<PurchaseOrder>().orderByDesc(PurchaseOrder::getId));
-        for (PurchaseOrder o : list) {
-            enrichOrder(o);
-        }
+        enrichOrdersBatch(list);
         return list;
     }
 
@@ -109,50 +97,65 @@ public class PurchaseOrderService {
             List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(
                     new LambdaQueryWrapper<PurchaseOrderItem>()
                             .eq(PurchaseOrderItem::getOrderId, id));
-            enrichItems(items);
             order.setItems(items);
-            enrichOrder(order);
+            enrichOrdersBatch(List.of(order));
         }
         return order;
     }
 
-    private void enrichOrder(PurchaseOrder o) {
-        if (o.getSupplierId() != null) {
-            Supplier s = supplierMapper.selectById(o.getSupplierId());
+    /** 批量预加载所有关联数据，N 条订单只需固定次数 SQL */
+    private void enrichOrdersBatch(List<PurchaseOrder> orders) {
+        if (orders == null || orders.isEmpty()) return;
+        // 收集所有订单ID + 关联实体ID
+        Set<Long> orderIds = new HashSet<>();
+        Set<Long> supplierIds = new HashSet<>();
+        Set<Long> warehouseIds = new HashSet<>();
+        Set<Long> userIds = new HashSet<>();
+        for (PurchaseOrder o : orders) {
+            orderIds.add(o.getId());
+            if (o.getSupplierId() != null) supplierIds.add(o.getSupplierId());
+            if (o.getWarehouseId() != null) warehouseIds.add(o.getWarehouseId());
+            if (o.getOperatorId() != null) userIds.add(o.getOperatorId());
+            if (o.getApproverId() != null) userIds.add(o.getApproverId());
+        }
+        // 批量加载订单明细
+        List<PurchaseOrderItem> allItems = orderIds.isEmpty() ? List.of()
+                : purchaseOrderItemMapper.selectList(
+                    new LambdaQueryWrapper<PurchaseOrderItem>().in(PurchaseOrderItem::getOrderId, orderIds));
+        Map<Long, List<PurchaseOrderItem>> itemMap = allItems.stream()
+                .collect(Collectors.groupingBy(PurchaseOrderItem::getOrderId));
+        // 收集明细中的商品ID
+        Set<Long> productIds = allItems.stream().map(PurchaseOrderItem::getProductId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        // 批量加载关联实体
+        Map<Long, Supplier> supplierMap = supplierIds.isEmpty() ? new HashMap<>()
+                : supplierMapper.selectBatchIds(supplierIds).stream()
+                    .collect(Collectors.toMap(Supplier::getId, s -> s, (a, b) -> a));
+        Map<Long, Warehouse> warehouseMap = warehouseIds.isEmpty() ? new HashMap<>()
+                : warehouseMapper.selectBatchIds(warehouseIds).stream()
+                    .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        Map<Long, SysUser> userMap = userIds.isEmpty() ? new HashMap<>()
+                : userMapper.selectBatchIds(userIds).stream()
+                    .collect(Collectors.toMap(SysUser::getId, u -> u, (a, b) -> a));
+        Map<Long, Product> productMap = productIds.isEmpty() ? new HashMap<>()
+                : productMapper.selectBatchIds(productIds).stream()
+                    .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+        // 纯内存组装
+        for (PurchaseOrder o : orders) {
+            Supplier s = supplierMap.get(o.getSupplierId());
             if (s != null) o.setSupplierName(s.getName());
-        }
-        if (o.getWarehouseId() != null) {
-            Warehouse w = warehouseMapper.selectById(o.getWarehouseId());
+            Warehouse w = warehouseMap.get(o.getWarehouseId());
             if (w != null) o.setWarehouseName(w.getName());
-        }
-        if (o.getOperatorId() != null) {
-            SysUser u = userMapper.selectById(o.getOperatorId());
-            if (u != null) o.setOperatorName(u.getRealName());
-        }
-        if (o.getApproverId() != null) {
-            SysUser u = userMapper.selectById(o.getApproverId());
-            if (u != null) o.setApproverName(u.getRealName());
-        }
-    }
-
-    private void enrichItems(List<PurchaseOrderItem> items) {
-        for (PurchaseOrderItem item : items) {
-            if (item.getProductId() != null) {
-                Product p = productMapper.selectById(item.getProductId());
-                if (p != null) {
-                    item.setProductName(p.getName());
-                    item.setProductCode(p.getCode());
-                }
+            SysUser op = userMap.get(o.getOperatorId());
+            if (op != null) o.setOperatorName(op.getRealName());
+            SysUser ap = userMap.get(o.getApproverId());
+            if (ap != null) o.setApproverName(ap.getRealName());
+            List<PurchaseOrderItem> items = itemMap.getOrDefault(o.getId(), List.of());
+            for (PurchaseOrderItem item : items) {
+                Product p = productMap.get(item.getProductId());
+                if (p != null) { item.setProductName(p.getName()); item.setProductCode(p.getCode()); }
             }
-        }
-    }
-
-    private void enrichItems(Long orderId) {
-        List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(
-                new LambdaQueryWrapper<PurchaseOrderItem>()
-                        .eq(PurchaseOrderItem::getOrderId, orderId));
-        if (items != null && !items.isEmpty()) {
-            enrichItems(items);
+            o.setItems(items);
         }
     }
 
@@ -226,46 +229,32 @@ public class PurchaseOrderService {
                 oldTotalQty += b.getQuantity();
             }
 
-            LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
-                    .eq(Inventory::getProductId, item.getProductId())
-                    .eq(Inventory::getWarehouseId, order.getWarehouseId())
-                    .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo())
-                    .last("LIMIT 1");
-            Inventory inv = inventoryMapper.selectOne(wrapper);
-            int beforeQty = inv != null ? inv.getQuantity() : 0;
-            int afterQty = beforeQty + item.getQuantity();
-
-            if (inv != null) {
-                inv.setQuantity(afterQty);
-                inventoryMapper.updateById(inv);
-            } else {
-                inv = new Inventory();
-                inv.setProductId(item.getProductId());
-                inv.setWarehouseId(order.getWarehouseId());
-                inv.setLocationId(order.getLocationId());
-                inv.setBatchNo(item.getBatchNo());
-                inv.setQuantity(item.getQuantity());
-                inv.setLockedQty(0);
-                inventoryMapper.insert(inv);
-            }
-
-            // 移动加权平均法：新均价 = (原库存总金额 + 本次进货金额) ÷ (原库存总数量 + 本次进货数量)
-            int newTotalQty = oldTotalQty + item.getQuantity();
-            BigDecimal newTotalValue = oldTotalValue.add(
-                    item.getAmount() != null ? item.getAmount() : BigDecimal.ZERO);
-            BigDecimal avgPrice = BigDecimal.ZERO;
-            if (newTotalQty > 0) {
-                avgPrice = newTotalValue.divide(BigDecimal.valueOf(newTotalQty), 4, RoundingMode.HALF_UP);
-            }
-            // 统一设置该商品该仓库下所有批次的成本价
-            List<Inventory> allBatches = inventoryMapper.selectList(
+            // 每次入库生成新的库存行（按入库日期区分），自动生成批次号
+            String batchNo = (item.getBatchNo() != null && !item.getBatchNo().isEmpty())
+                    ? item.getBatchNo()
+                    : "IN" + order.getOrderDate().toString().replace("-", "");
+            // 同一天同一商品多次入库，加序号区分
+            long sameDayCount = inventoryMapper.selectCount(
                     new LambdaQueryWrapper<Inventory>()
                             .eq(Inventory::getProductId, item.getProductId())
-                            .eq(Inventory::getWarehouseId, order.getWarehouseId()));
-            for (Inventory b : allBatches) {
-                b.setCostPrice(avgPrice);
-                inventoryMapper.updateById(b);
+                            .eq(Inventory::getWarehouseId, order.getWarehouseId())
+                            .likeRight(Inventory::getBatchNo, batchNo));
+            if (sameDayCount > 0) {
+                batchNo = batchNo + "-" + (sameDayCount + 1);
             }
+            Inventory inv = new Inventory();
+            inv.setProductId(item.getProductId());
+            inv.setWarehouseId(order.getWarehouseId());
+            inv.setLocationId(order.getLocationId());
+            inv.setBatchNo(batchNo);
+            inv.setQuantity(item.getQuantity());
+            inv.setLockedQty(0);
+            // 该批次的成本价 = 入库时的采购单价
+            BigDecimal batchCost = item.getUnitPrice() != null ? item.getUnitPrice() : BigDecimal.ZERO;
+            inv.setCostPrice(batchCost);
+            inventoryMapper.insert(inv);
+            int beforeQty = oldTotalQty;
+            int afterQty = oldTotalQty + item.getQuantity();
 
             InventoryLog log = new InventoryLog();
             log.setProductId(item.getProductId());
@@ -320,81 +309,7 @@ public class PurchaseOrderService {
         }
 
         if (order.getStatus() == OrderStatus.CONFIRMED) {
-            // 已入库状态仅管理员可取消（涉及库存回滚）
-            long uid = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
-            SysUser u = userMapper.selectById(uid);
-            if (u == null || u.getRole() == null || u.getRole() != 1) {
-                throw new BusinessException("已入库状态仅管理员可取消");
-            }
-            List<PurchaseOrderItem> items = purchaseOrderItemMapper.selectList(
-                    new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getOrderId, id));
-            for (PurchaseOrderItem item : items) {
-                // 计算取消前的库存总金额和总数量
-                List<Inventory> beforeBatches = inventoryMapper.selectList(
-                        new LambdaQueryWrapper<Inventory>()
-                                .eq(Inventory::getProductId, item.getProductId())
-                                .eq(Inventory::getWarehouseId, order.getWarehouseId()));
-                BigDecimal beforeTotalValue = BigDecimal.ZERO;
-                int beforeTotalQty = 0;
-                for (Inventory b : beforeBatches) {
-                    if (b.getCostPrice() != null) {
-                        beforeTotalValue = beforeTotalValue.add(
-                                b.getCostPrice().multiply(BigDecimal.valueOf(b.getQuantity())));
-                    }
-                    beforeTotalQty += b.getQuantity();
-                }
-
-                LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
-                        .eq(Inventory::getProductId, item.getProductId())
-                        .eq(Inventory::getWarehouseId, order.getWarehouseId())
-                        .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo())
-                        .last("LIMIT 1");
-                Inventory inv = inventoryMapper.selectOne(wrapper);
-                if (inv != null) {
-                    int beforeQty = inv.getQuantity();
-                    int afterQty = beforeQty - item.getQuantity();
-                    if (afterQty < 0) {
-                        throw new BusinessException("商品库存不足，无法取消入库（当前库存: " + beforeQty + "，需扣减: " + item.getQuantity() + "）");
-                    }
-                    inv.setQuantity(afterQty);
-                    inventoryMapper.updateById(inv);
-
-                    // 取消后重新计算加权平均成本价 = (原总金额 - 取消批次金额) ÷ 剩余总数量
-                    int afterTotalQty = beforeTotalQty - item.getQuantity();
-                    if (afterTotalQty > 0) {
-                        BigDecimal afterTotalValue = beforeTotalValue.subtract(
-                                item.getAmount() != null ? item.getAmount() : BigDecimal.ZERO);
-                        BigDecimal avgPrice = afterTotalValue.divide(
-                                BigDecimal.valueOf(afterTotalQty), 4, RoundingMode.HALF_UP);
-                        List<Inventory> remainingBatches = inventoryMapper.selectList(
-                                new LambdaQueryWrapper<Inventory>()
-                                        .eq(Inventory::getProductId, item.getProductId())
-                                        .eq(Inventory::getWarehouseId, order.getWarehouseId()));
-                        for (Inventory b : remainingBatches) {
-                            b.setCostPrice(avgPrice);
-                            inventoryMapper.updateById(b);
-                        }
-                    } else {
-                        // 库存归零时，成本价清零
-                        inv.setCostPrice(BigDecimal.ZERO);
-                        inventoryMapper.updateById(inv);
-                    }
-
-                    InventoryLog log = new InventoryLog();
-                    log.setProductId(item.getProductId());
-                    log.setWarehouseId(order.getWarehouseId());
-                    log.setLocationId(order.getLocationId());
-                    log.setBatchNo(item.getBatchNo());
-                    log.setChangeType("PURCHASE_CANCEL");
-                    log.setChangeQty(-item.getQuantity());
-                    log.setBeforeQty(beforeQty);
-                    log.setAfterQty(inv.getQuantity());
-                    log.setRefOrderNo(order.getOrderNo());
-                    log.setOperatorId(order.getOperatorId());
-                    log.setRemark("采购入库取消，回滚库存");
-                    inventoryLogMapper.insert(log);
-                }
-            }
+            throw new BusinessException("已入库的单据不可取消，请使用作废功能（作废不会影响库存）");
         }
 
         order.setStatus(OrderStatus.CANCELED);

@@ -43,19 +43,19 @@ const router = createRouter({
           path: 'purchase',
           name: 'Purchase',
           component: () => import('../views/purchase/PurchaseList.vue'),
-          meta: { title: '采购入库' },
+          meta: { title: '采购入库', requireAdmin: true },
         },
         {
           path: 'purchase/create',
           name: 'PurchaseCreate',
           component: () => import('../views/purchase/PurchaseForm.vue'),
-          meta: { title: '新建入库单' },
+          meta: { title: '新建入库单', requireAdmin: true },
         },
         {
           path: 'purchase/:id',
           name: 'PurchaseDetail',
           component: () => import('../views/purchase/PurchaseDetail.vue'),
-          meta: { title: '入库单详情' },
+          meta: { title: '入库单详情', requireAdmin: true },
         },
         {
           path: 'sales',
@@ -168,6 +168,12 @@ const router = createRouter({
           name: 'Customer',
           component: () => import('../views/product/CustomerList.vue'),
           meta: { title: '客户管理' },
+        },
+        {
+          path: 'pending',
+          name: 'Pending',
+          component: () => import('../views/pending/PendingList.vue'),
+          meta: { title: '待审批', requireAdmin: true },
         },
         {
           path: 'help',

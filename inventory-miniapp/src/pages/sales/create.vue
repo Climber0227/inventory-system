@@ -7,6 +7,7 @@ import FloatingHome from '@/components/FloatingHome'
 const editingId = ref(null)
 const customers = ref([])
 const products = ref([])
+const whInventoryRecords = ref([]) // 当前仓库库存明细（含入库日期）
 const warehouseStock = ref({})
 const submitting = ref(false)
 const showPicker = ref(false)
@@ -115,34 +116,39 @@ const whDisplay = computed(() => {
 
 async function loadStock(id) {
   warehouseStock.value = {}
+  whInventoryRecords.value = []
   try {
     const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
+    const records = (res.data.records || []).filter(r => (r.quantity || 0) > 0)
+    records.sort((a, b) => (b.createTime || '').localeCompare(a.createTime || ''))
+    whInventoryRecords.value = records
+    // 聚合库存
     const stock = {}
-    for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
+    for (const r of records) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
     warehouseStock.value = stock
   } catch { /* ignore */ }
 }
 
 watch(() => form.value.warehouseId, async (id) => {
-  if (!id) return
-  warehouseStock.value = {}
-  if (!id) return
-  try {
-    const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
-    const stock = {}
-    for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
-    warehouseStock.value = stock
-  } catch { /* ignore */ }
+  if (id) loadStock(id)
 })
 
+// 只显示当前仓库有库存的商品，附带库存数和最早入库日期
 const sortedProducts = computed(() => {
-  const withStock = [], without = []
-  for (const p of products.value) {
-    const s = warehouseStock.value[p.id] || 0
-    ;(s > 0 ? withStock : without).push({ ...p, stock: s })
-  }
-  withStock.sort((a, b) => b.stock - a.stock)
-  return [...withStock, ...without]
+  return whInventoryRecords.value
+    .filter(r => r.productId && (r.quantity || 0) > 0)
+    .map(r => {
+      const p = products.value.find(x => x.id === r.productId)
+      return {
+        id: r.productId, name: r.productName || (p ? p.name : ''),
+        code: r.productCode || (p ? p.code : ''), spec: p ? p.spec : '',
+        salePrice: p ? p.salePrice : null,
+        stock: r.quantity || 0,
+        stockDate: r.createTime?.substring(0, 16) || '',
+        batchNo: r.batchNo || '',
+      }
+    })
+    .sort((a, b) => (b.stockDate || '').localeCompare(a.stockDate || ''))
 })
 
 const filteredProducts = computed(() => {
@@ -157,7 +163,7 @@ function openPicker(idx) { pickerIndex.value = idx; searchKeyword.value = ''; sh
 function selectProduct(p) {
   const item = form.value.items[pickerIndex.value]
   if (!item) return
-  item.productId = p.id; item.productName = p.name; item.spec = p.spec || ''
+  item.productId = p.id; item.productName = p.name; item.spec = p.spec || ''; item.batchNo = p.batchNo || ''
   if (!item.unitPrice) item.unitPrice = p.salePrice
   calcAmount(item)
   showPicker.value = false
@@ -292,6 +298,7 @@ async function handleSubmit() {
         <text class="section-title">商品明细</text>
         <text class="add-link" @click="addItem">+ 添加</text>
       </view>
+      <text class="scan-hint">提示：请手动添加商品，或使用右侧 📱 按钮扫条码快速选择</text>
       <view v-for="(item, index) in form.items" :key="index" class="item-card">
         <view class="item-header">
           <text>商品 {{ index + 1 }}</text>
@@ -301,7 +308,7 @@ async function handleSubmit() {
           <view class="picker picker-select" @click="openPicker(index)" style="flex:1;overflow:hidden;">
             {{ item.productName || '选择商品' }}
           </view>
-          <view class="scan-btn" @click="scanCode(index)">📷</view>
+          <view class="scan-btn" @click="scanCode(index)">📱</view>
         </view>
         <view v-if="item.productId" class="selected-info">
           <text>规格: {{ item.spec || '-' }}</text>
@@ -331,17 +338,18 @@ async function handleSubmit() {
           <input v-model="searchKeyword" class="search-input" :class="{ focused: searchFocused }" @focus="searchFocused = true" @blur="searchFocused = false" placeholder="搜索商品名称或编码" focus />
         </view>
         <scroll-view scroll-y class="picker-list">
-          <view v-for="p in filteredProducts" :key="p.id" class="picker-item" @click="selectProduct(p)">
+          <view v-for="p in filteredProducts" :key="p.id + '_' + p.stockDate + '_' + p.batchNo" class="picker-item" @click="selectProduct(p)">
             <view style="flex:1;overflow:hidden;">
               <view style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }}</view>
               <text style="font-size:11px;color:#999;">{{ p.code }} | {{ p.spec || '-' }}</text>
               <text style="font-size:11px;color:#666;display:block;">
-                销售价 ¥{{ p.salePrice }}
-                <text class="stock-text" :class="{ 'has-stock': (warehouseStock[p.id] || 0) > 0 }"> | 库存 {{ warehouseStock[p.id] ?? '-' }}</text>
+                {{ p.stock }}件 · {{ p.stockDate }}
+                <text v-if="p.batchNo" style="color:#bbb;"> · {{ p.batchNo }}</text>
+                <text style="margin-left:8px;">售价 ¥{{ p.salePrice }}</text>
               </text>
             </view>
           </view>
-          <view v-if="filteredProducts.length === 0" style="text-align:center;padding:20px;color:#999;">无匹配商品</view>
+          <view v-if="filteredProducts.length === 0" style="text-align:center;padding:20px;color:#999;">该仓库暂无可用库存</view>
         </scroll-view>
       </view>
     </view>
@@ -379,6 +387,7 @@ async function handleSubmit() {
 .btn-submit { flex:1; background: #2e7d32; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 15px; }
 .ic-row { display: flex; align-items: center; gap: 8px; }
 .scan-btn { width: 40px; height: 40px; background: #e8f5e9; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.scan-hint { display: block; font-size: 11px; color: #999; margin-bottom: 8px; }
 .picker-select:active { background: #e8f5e9; }
 .picker-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.4); z-index: 999; display: flex; align-items: flex-end; }
 .picker-modal { background: #fff; border-radius: 16px 16px 0 0; width: 100%; max-height: 70vh; display: flex; flex-direction: column; }

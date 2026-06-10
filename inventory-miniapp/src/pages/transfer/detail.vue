@@ -3,6 +3,9 @@ import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
+import { useUserStore } from '@/store/user'
+
+const userStore = useUserStore()
 
 const order = ref(null)
 const loading = ref(false)
@@ -52,6 +55,36 @@ async function cancelOrder() {
     },
   })
 }
+
+async function approveOrder() {
+  uni.showModal({
+    title: '审核确认', content: '确定审核通过此调拨单？通过后将更新库存。',
+    success: async (r) => {
+      if (!r.confirm) return
+      actionLoading.value = true
+      try {
+        await request.put(`/transfer/${id}/approve`)
+        uni.showToast({ title: '审核通过', icon: 'success' })
+        fetchDetail()
+      } finally { actionLoading.value = false }
+    },
+  })
+}
+
+async function rejectOrder() {
+  uni.showModal({
+    title: '驳回原因', editable: true, placeholderText: '请输入驳回原因',
+    success: async (r) => {
+      if (!r.confirm) return
+      actionLoading.value = true
+      try {
+        await request.put(`/transfer/${id}/reject`, { reason: r.content || '' })
+        uni.showToast({ title: '已驳回', icon: 'success' })
+        fetchDetail()
+      } finally { actionLoading.value = false }
+    },
+  })
+}
 </script>
 
 <template>
@@ -88,6 +121,8 @@ async function cancelOrder() {
       <button v-if="order?.status === 0" class="btn-submit" :loading="actionLoading" @click="submitOrder">提交调拨</button>
       <button v-if="order?.status === 0" class="btn-edit" :loading="actionLoading" @click="uni.navigateTo({ url: '/pages/transfer/create?id=' + order.id })">编辑</button>
       <button v-if="order?.status === 0" class="btn-cancel" :loading="actionLoading" @click="cancelOrder">取消</button>
+      <button v-if="userStore.isAdmin && order?.status === 4" class="btn-submit" :loading="actionLoading" @click="approveOrder">审核通过</button>
+      <button v-if="userStore.isAdmin && order?.status === 4" class="btn-cancel" style="color:#c62828;border-color:#ffcdd2;" :loading="actionLoading" @click="rejectOrder">驳回</button>
     </view>
     <FloatingHome />
   </view>

@@ -1,5 +1,6 @@
 package com.inventory.inventory.controller;
 
+import cn.dev33.satoken.annotation.SaCheckRole;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.inventory.common.result.PageResult;
 import com.inventory.common.result.R;
@@ -65,6 +66,7 @@ public class InventoryController {
         return R.ok(PageResult.of(inventoryLogService.page(new Page<>(page, size), productId, productName, warehouseId, changeType, refOrderNo, operatorName, start, end)));
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "导出库存")
     @GetMapping("/export")
     public void export(HttpServletResponse response,

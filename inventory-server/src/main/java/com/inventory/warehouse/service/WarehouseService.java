@@ -23,6 +23,9 @@ import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
 import cn.hutool.core.date.DateUtil;
+import org.apache.ibatis.session.ExecutorType;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
 import java.util.Date;
 
 @Service
@@ -34,17 +37,121 @@ public class WarehouseService {
     private final SalesOrderMapper salesOrderMapper;
     private final InventoryTransferMapper transferMapper;
     private final ProductMapper productMapper;
+    private final SqlSessionFactory sqlSessionFactory;
 
     public WarehouseService(WarehouseMapper warehouseMapper, InventoryMapper inventoryMapper,
                             PurchaseOrderMapper purchaseOrderMapper, SalesOrderMapper salesOrderMapper,
                             InventoryTransferMapper transferMapper,
-                            ProductMapper productMapper) {
+                            ProductMapper productMapper,
+                            SqlSessionFactory sqlSessionFactory) {
         this.warehouseMapper = warehouseMapper;
         this.inventoryMapper = inventoryMapper;
         this.purchaseOrderMapper = purchaseOrderMapper;
         this.salesOrderMapper = salesOrderMapper;
         this.transferMapper = transferMapper;
         this.productMapper = productMapper;
+        this.sqlSessionFactory = sqlSessionFactory;
+    }
+
+    /** 仓库统计上下文：SQL 聚合 + 内存计算，避免加载全量库存（144 万 → 1.2 万行） */
+    private static class StatsContext {
+        final Map<Long, List<Long>> childMap;          // parentId → childIds
+        final Map<Long, Set<Long>> leafDescendants;     // nodeId → 所有叶子后代ID集合
+        final Map<Long, Integer> qtyByWh;               // warehouseId → 总数量
+        final Map<Long, BigDecimal> amtByWh;            // warehouseId → 总金额
+        final Map<Long, Warehouse> whMap;               // id → warehouse
+
+        StatsContext(Map<Long, List<Long>> childMap, Map<Long, Set<Long>> leafDescendants,
+                    Map<Long, Integer> qtyByWh, Map<Long, BigDecimal> amtByWh,
+                    Map<Long, Warehouse> whMap) {
+            this.childMap = childMap; this.leafDescendants = leafDescendants;
+            this.qtyByWh = qtyByWh; this.amtByWh = amtByWh; this.whMap = whMap;
+        }
+
+        StatsContext(WarehouseService svc) {
+            // 1. 全量加载仓库（1 次 SQL）
+            List<Warehouse> all = svc.warehouseMapper.selectList(
+                    new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getDeleted, 0));
+            whMap = all.stream().collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+
+            // 2. 构建 childMap（纯内存）
+            childMap = new HashMap<>();
+            for (Warehouse w : all) {
+                if (w.getParentId() != null) {
+                    childMap.computeIfAbsent(w.getParentId(), k -> new ArrayList<>()).add(w.getId());
+                }
+            }
+
+            // 3. SQL 聚合库存统计（1 次 SQL，返回 ~12K 行而非 144 万行）
+            qtyByWh = new HashMap<>();
+            amtByWh = new HashMap<>();
+            for (Map<String, Object> row : svc.inventoryMapper.selectWarehouseStats()) {
+                Long whId = toLong(row.get("warehouse_id"));
+                if (whId != null) {
+                    qtyByWh.put(whId, toInt(row.get("total_qty")));
+                    Object amt = row.get("total_amt");
+                    amtByWh.put(whId, amt != null ? new BigDecimal(amt.toString()) : BigDecimal.ZERO);
+                }
+            }
+
+            // 4. 自底向上计算每个节点的叶子后代集合（纯内存）
+            leafDescendants = new HashMap<>();
+            List<Warehouse> sorted = new ArrayList<>(all);
+            sorted.sort((a, b) -> Integer.compare(
+                    b.getLevel() != null ? b.getLevel() : 0,
+                    a.getLevel() != null ? a.getLevel() : 0));
+            for (Warehouse w : sorted) {
+                List<Long> children = childMap.get(w.getId());
+                if (children == null || children.isEmpty()) {
+                    Set<Long> s = new HashSet<>();
+                    s.add(w.getId());
+                    leafDescendants.put(w.getId(), s);
+                } else {
+                    Set<Long> s = new HashSet<>();
+                    for (Long cid : children) {
+                        Set<Long> childLeaves = leafDescendants.get(cid);
+                        if (childLeaves != null) s.addAll(childLeaves);
+                    }
+                    leafDescendants.put(w.getId(), s);
+                }
+            }
+        }
+
+        private static Long toLong(Object v) {
+            if (v instanceof Long) return (Long) v;
+            if (v instanceof Number) return ((Number) v).longValue();
+            return null;
+        }
+        private static int toInt(Object v) {
+            if (v instanceof Number) return ((Number) v).intValue();
+            return 0;
+        }
+    }
+
+    private StatsContext loadStatsContext() {
+        return new StatsContext(this);
+    }
+
+    /** 纯内存 enrich，用预聚合数据，0 次 SQL */
+    private void enrichStats(Warehouse w, StatsContext ctx) {
+        Set<Long> leafIds = ctx.leafDescendants.get(w.getId());
+        if (leafIds == null || leafIds.isEmpty()) {
+            w.setProductCount(0);
+            w.setTotalAmount(BigDecimal.ZERO);
+            w.setHasChildren(false);
+            return;
+        }
+        w.setHasChildren(ctx.childMap.containsKey(w.getId())
+                && !ctx.childMap.get(w.getId()).isEmpty());
+
+        int totalQty = 0;
+        BigDecimal totalAmt = BigDecimal.ZERO;
+        for (Long leafId : leafIds) {
+            totalQty += ctx.qtyByWh.getOrDefault(leafId, 0);
+            totalAmt = totalAmt.add(ctx.amtByWh.getOrDefault(leafId, BigDecimal.ZERO));
+        }
+        w.setProductCount(totalQty);
+        w.setTotalAmount(totalAmt);
     }
 
     public Warehouse getById(Long id) {
@@ -53,24 +160,47 @@ public class WarehouseService {
         return w;
     }
 
-    public List<Warehouse> tree() {
-        List<Warehouse> all = warehouseMapper.selectList(new LambdaQueryWrapper<Warehouse>()
-                .orderByAsc(Warehouse::getId));
-        for (Warehouse w : all) enrichStats(w);
-        Map<Long, Warehouse> map = all.stream().collect(Collectors.toMap(Warehouse::getId, w -> w));
-        List<Warehouse> roots = new java.util.ArrayList<>();
+    public List<Warehouse> tree() { return tree(true); }
+
+    public List<Warehouse> tree(boolean enrichStats) {
+        StatsContext ctx = enrichStats ? loadStatsContext() : loadTreeOnly();
+        List<Warehouse> all = new ArrayList<>(ctx.whMap.values());
+        all.sort(Comparator.comparing(Warehouse::getId));
+        if (enrichStats) {
+            for (Warehouse w : all) enrichStats(w, ctx);
+        } else {
+            for (Warehouse w : all) w.setHasChildren(ctx.childMap.containsKey(w.getId())
+                    && !ctx.childMap.get(w.getId()).isEmpty());
+        }
+        List<Warehouse> roots = new ArrayList<>();
         for (Warehouse w : all) {
             if (w.getParentId() == null) {
                 roots.add(w);
             } else {
-                Warehouse parent = map.get(w.getParentId());
+                Warehouse parent = ctx.whMap.get(w.getParentId());
                 if (parent != null) {
-                    if (parent.getChildren() == null) parent.setChildren(new java.util.ArrayList<>());
+                    if (parent.getChildren() == null) parent.setChildren(new ArrayList<>());
                     parent.getChildren().add(w);
                 }
             }
         }
         return roots;
+    }
+
+    /** 仅加载树结构，不加载库存聚合（用于筛选下拉框场景） */
+    private StatsContext loadTreeOnly() {
+        List<Warehouse> all = warehouseMapper.selectList(
+                new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getDeleted, 0));
+        Map<Long, Warehouse> whMap = all.stream()
+                .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        Map<Long, List<Long>> childMap = new HashMap<>();
+        for (Warehouse w : all) {
+            if (w.getParentId() != null) {
+                childMap.computeIfAbsent(w.getParentId(), k -> new ArrayList<>()).add(w.getId());
+            }
+        }
+        return new StatsContext(childMap, Collections.emptyMap(), Collections.emptyMap(),
+                Collections.emptyMap(), whMap);
     }
 
     public List<Warehouse> children(Long parentId) {
@@ -81,34 +211,28 @@ public class WarehouseService {
     }
 
     public List<Warehouse> search(String keyword, Integer level, Integer status) {
-        LambdaQueryWrapper<Warehouse> wrapper = new LambdaQueryWrapper<Warehouse>();
-        if (status != null) wrapper.eq(Warehouse::getStatus, status);
-        else wrapper.eq(Warehouse::getStatus, 1);
-        if (level != null) wrapper.eq(Warehouse::getLevel, level);
-        if (keyword != null && !keyword.isEmpty()) {
-            wrapper.and(w -> w.like(Warehouse::getName, keyword).or().like(Warehouse::getCode, keyword));
-        }
-        List<Warehouse> list = warehouseMapper.selectList(wrapper.orderByAsc(Warehouse::getId));
-        for (Warehouse w : list) {
-            enrichStats(w);
-            w.setHasChildren(hasChildren(w.getId()));
-        }
-        return list;
+        StatsContext ctx = loadStatsContext();
+        return ctx.whMap.values().stream()
+                .filter(w -> status == null ? w.getStatus() != null && w.getStatus() == 1
+                        : w.getStatus() != null && w.getStatus().equals(status))
+                .filter(w -> level == null || w.getLevel() != null && w.getLevel().equals(level))
+                .filter(w -> keyword == null || keyword.isEmpty()
+                        || (w.getName() != null && w.getName().contains(keyword))
+                        || (w.getCode() != null && w.getCode().contains(keyword)))
+                .sorted(Comparator.comparing(Warehouse::getId))
+                .peek(w -> enrichStats(w, ctx))
+                .collect(Collectors.toList());
     }
 
     public List<Warehouse> listAll() {
-        // 返回所有叶子节点（无子级的仓库）用于单据选择
-        List<Long> parentIds = warehouseMapper.selectList(
-                new LambdaQueryWrapper<Warehouse>()
-                        .isNotNull(Warehouse::getParentId)
-                        .select(Warehouse::getParentId))
-                .stream().map(Warehouse::getParentId).distinct().collect(Collectors.toList());
-        List<Warehouse> list = warehouseMapper.selectList(new LambdaQueryWrapper<Warehouse>()
-                .eq(Warehouse::getStatus, 1)
-                .notIn(!parentIds.isEmpty(), Warehouse::getId, parentIds)
-                .orderByAsc(Warehouse::getId));
-        for (Warehouse w : list) enrichStats(w);
-        return list;
+        StatsContext ctx = loadStatsContext();
+        // 叶子节点（无子级）用于单据选择
+        Set<Long> parentIds = new HashSet<>(ctx.childMap.keySet());
+        return ctx.whMap.values().stream()
+                .filter(w -> w.getStatus() != null && w.getStatus() == 1)
+                .filter(w -> !parentIds.contains(w.getId()))  // 排除非叶子
+                .peek(w -> enrichStats(w, ctx))
+                .collect(Collectors.toList());
     }
 
     public List<Warehouse> exportAll() {
@@ -118,31 +242,24 @@ public class WarehouseService {
     }
 
     public List<Warehouse> roots(Integer status) {
-        LambdaQueryWrapper<Warehouse> wrapper = new LambdaQueryWrapper<Warehouse>()
-                .eq(Warehouse::getDeleted, 0)
-                .eq(Warehouse::getLevel, 1);
-        if (status != null) wrapper.eq(Warehouse::getStatus, status);
-        wrapper.orderByAsc(Warehouse::getId);
-        List<Warehouse> list = warehouseMapper.selectList(wrapper);
-        for (Warehouse w : list) {
-            w.setHasChildren(hasChildren(w.getId()));
-            enrichStats(w);
-        }
-        return list;
+        StatsContext ctx = loadStatsContext();
+        return ctx.whMap.values().stream()
+                .filter(w -> w.getLevel() != null && w.getLevel() == 1)
+                .filter(w -> status == null || w.getStatus() != null && w.getStatus().equals(status))
+                .sorted(Comparator.comparing(Warehouse::getId))
+                .peek(w -> enrichStats(w, ctx))
+                .collect(Collectors.toList());
     }
 
     public List<Warehouse> childrenAll(Long parentId, Integer status) {
-        LambdaQueryWrapper<Warehouse> wrapper = new LambdaQueryWrapper<Warehouse>()
-                .eq(Warehouse::getParentId, parentId)
-                .eq(Warehouse::getDeleted, 0);
-        if (status != null) wrapper.eq(Warehouse::getStatus, status);
-        wrapper.orderByAsc(Warehouse::getId);
-        List<Warehouse> list = warehouseMapper.selectList(wrapper);
-        for (Warehouse w : list) {
-            w.setHasChildren(hasChildren(w.getId()));
-            enrichStats(w);
-        }
-        return list;
+        StatsContext ctx = loadStatsContext();
+        List<Long> childIds = ctx.childMap.getOrDefault(parentId, Collections.emptyList());
+        return childIds.stream()
+                .map(ctx.whMap::get)
+                .filter(Objects::nonNull)
+                .filter(w -> status == null || w.getStatus() != null && w.getStatus().equals(status))
+                .peek(w -> enrichStats(w, ctx))
+                .collect(Collectors.toList());
     }
 
     public Page<Warehouse> page(Page<Warehouse> page, String name, String contact, String phone,
@@ -157,10 +274,11 @@ public class WarehouseService {
                 .eq(parentId != null, Warehouse::getParentId, parentId)
                 .orderByDesc(Warehouse::getId);
         Page<Warehouse> result = warehouseMapper.selectPage(page, wrapper);
+        StatsContext ctx = loadStatsContext();
         for (Warehouse w : result.getRecords()) {
-            enrichStats(w);
+            enrichStats(w, ctx);
             if (w.getParentId() != null) {
-                Warehouse parent = warehouseMapper.selectById(w.getParentId());
+                Warehouse parent = ctx.whMap.get(w.getParentId());
                 if (parent != null) w.setParentName(parent.getName());
             }
         }
@@ -170,56 +288,6 @@ public class WarehouseService {
     private boolean hasChildren(Long id) {
         return warehouseMapper.selectCount(
                 new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getParentId, id)) > 0;
-    }
-
-    private void enrichStats(Warehouse w) {
-        if (hasChildren(w.getId())) {
-            // 父节点：从所有叶子节点汇总
-            List<Long> leafIds = collectLeafIds(w.getId());
-            if (leafIds.isEmpty()) {
-                w.setProductCount(0);
-                w.setTotalAmount(BigDecimal.ZERO);
-                return;
-            }
-            List<Inventory> invs = inventoryMapper.selectList(
-                    new LambdaQueryWrapper<Inventory>().in(Inventory::getWarehouseId, leafIds));
-            int count = invs.stream().mapToInt(Inventory::getQuantity).sum();
-            w.setProductCount(count);
-            BigDecimal amount = BigDecimal.ZERO;
-            for (Inventory inv : invs) {
-                if (inv.getCostPrice() != null) {
-                    amount = amount.add(inv.getCostPrice().multiply(BigDecimal.valueOf(inv.getQuantity())));
-                }
-            }
-            w.setTotalAmount(amount);
-        } else {
-            // 叶子节点：直接查库存
-            List<Inventory> invs = inventoryMapper.selectList(
-                    new LambdaQueryWrapper<Inventory>().eq(Inventory::getWarehouseId, w.getId()));
-            int count = invs.stream().mapToInt(Inventory::getQuantity).sum();
-            w.setProductCount(count);
-            BigDecimal amount = BigDecimal.ZERO;
-            for (Inventory inv : invs) {
-                if (inv.getCostPrice() != null) {
-                    amount = amount.add(inv.getCostPrice().multiply(BigDecimal.valueOf(inv.getQuantity())));
-                }
-            }
-            w.setTotalAmount(amount);
-        }
-    }
-
-    private List<Long> collectLeafIds(Long parentId) {
-        List<Warehouse> children = warehouseMapper.selectList(
-                new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getParentId, parentId));
-        List<Long> ids = new java.util.ArrayList<>();
-        for (Warehouse child : children) {
-            if (hasChildren(child.getId())) {
-                ids.addAll(collectLeafIds(child.getId()));
-            } else {
-                ids.add(child.getId());
-            }
-        }
-        return ids;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -333,73 +401,124 @@ public class WarehouseService {
         warehouseMapper.updateById(w);
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public int importExcel(List<WarehouseImportVO> rows) {
-        // 缓存 key=名称:父级ID → warehouseId，避免重复查库
+        // 1. 加载已有仓库到缓存（name:parentId → id）
         Map<String, Long> cache = new HashMap<>();
-        int created = 0;
-
-        // 先加载已有仓库到缓存
-        List<Warehouse> existing = warehouseMapper.selectList(
-                new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getDeleted, 0));
-        for (Warehouse w : existing) {
-            String key = w.getName() + ":" + (w.getParentId() == null ? 0 : w.getParentId());
-            cache.putIfAbsent(key, w.getId());
+        // 已占用的编码（来自数据库）
+        Set<String> takenCodes = new HashSet<>();
+        for (Warehouse w : warehouseMapper.selectList(
+                new LambdaQueryWrapper<Warehouse>().eq(Warehouse::getDeleted, 0))) {
+            cache.put(w.getName() + ":" + (w.getParentId() == null ? 0 : w.getParentId()), w.getId());
+            if (w.getCode() != null) takenCodes.add(w.getCode());
         }
 
-        for (WarehouseImportVO row : rows) {
-            // 逐级处理 一级→二级→三级→四级
-            Long parentId = null;
-            int level = 0;
-            String[] names = { row.getLevel1Name(), row.getLevel2Name(),
-                               row.getLevel3Name(), row.getLevel4Name() };
+        // 2. 逐级处理（1级→2级→3级→4级）
+        //    每级去重后 BATCH 插入，避免同一名称重复创建
+        int created = 0;
+        for (int level = 1; level <= 4; level++) {
+            // key=cacheKey → Warehouse，自动去重
+            Map<String, Warehouse> newWhMap = new LinkedHashMap<>();
 
-            for (int i = 0; i < names.length; i++) {
-                String name = names[i];
+            for (WarehouseImportVO row : rows) {
+                String[] names = { row.getLevel1Name(), row.getLevel2Name(),
+                                   row.getLevel3Name(), row.getLevel4Name() };
+                String name = names[level - 1];
                 if (name == null || name.trim().isEmpty()) continue;
                 name = name.trim();
-                level = i + 1;
+
+                // 计算 parentId: 从缓存取前一级的 ID
+                Long parentId = null;
+                for (int p = 0; p < level - 1; p++) {
+                    String pn = names[p];
+                    if (pn == null || pn.trim().isEmpty()) continue;
+                    String ck = pn.trim() + ":" + (parentId == null ? 0 : parentId);
+                    parentId = cache.get(ck);
+                    if (parentId == null) break;
+                }
+                if (parentId == null && level > 1) continue;
 
                 String cacheKey = name + ":" + (parentId == null ? 0 : parentId);
-                Long existedId = cache.get(cacheKey);
+                if (cache.containsKey(cacheKey)) continue;
+                if (newWhMap.containsKey(cacheKey)) continue; // 同一批次已加入，去重
 
-                if (existedId != null) {
-                    parentId = existedId;
-                    continue;
-                }
+                boolean isLast = (level == 4)
+                        || (level < 4 && (names[level] == null || names[level].trim().isEmpty()));
 
-                // 创建新仓库
                 Warehouse w = new Warehouse();
                 w.setName(name);
                 w.setParentId(parentId);
                 w.setLevel(level);
-                // 最后一级（叶子）才设置状态/联系人/电话/地址
-                boolean isLast = (i == names.length - 1) || (i + 1 < names.length &&
-                        (names[i + 1] == null || names[i + 1].trim().isEmpty()));
                 if (isLast) {
-                    // 状态：空/启用/停用 → 1/1/0
-                    String statusStr = row.getStatus();
-                    w.setStatus("停用".equals(statusStr) ? 0 : 1);
+                    w.setStatus("停用".equals(row.getStatus()) ? 0 : 1);
                     w.setContact(row.getContact());
                     w.setPhone(row.getPhone());
                     w.setAddress(row.getAddress());
                 } else {
                     w.setStatus(1);
                 }
-                // 编码：仅叶子节点使用客户自定义编码，父节点始终自动生成
                 String customCode = row.getCode();
-                if (isLast && customCode != null && !customCode.trim().isEmpty()) {
+                if (isLast && customCode != null && !customCode.trim().isEmpty()
+                        && !takenCodes.contains(customCode.trim())) {
                     w.setCode(customCode.trim());
-                } else {
-                    w.setCode(generateWarehouseCode());
+                    takenCodes.add(customCode.trim());
                 }
-                warehouseMapper.insert(w);
+                newWhMap.put(cacheKey, w);
+            }
 
-                cache.put(cacheKey, w.getId());
-                parentId = w.getId();
-                created++;
+            if (newWhMap.isEmpty()) continue;
+            List<Warehouse> newWh = new ArrayList<>(newWhMap.values());
+
+            if (level == 4) {
+                // Level 4：BATCH 插入，编码池统一赋值，已被 takenCodes 过滤
+                List<String> pool = generateWarehouseCodes(newWh.size());
+                int poolIdx = 0;
+                for (Warehouse w : newWh) {
+                    if (w.getCode() == null || w.getCode().isEmpty()) {
+                        String code = pool.get(Math.min(poolIdx++, pool.size() - 1));
+                        // 确保不跟 takenCodes 冲突
+                        while (takenCodes.contains(code) && poolIdx < pool.size()) {
+                            code = pool.get(Math.min(poolIdx++, pool.size() - 1));
+                        }
+                        w.setCode(code);
+                        takenCodes.add(code);
+                    }
+                }
+                try (SqlSession session = sqlSessionFactory.openSession(ExecutorType.BATCH)) {
+                    WarehouseMapper batchMapper = session.getMapper(WarehouseMapper.class);
+                    for (Warehouse w : newWh) batchMapper.insert(w);
+                    session.commit();
+                }
+                created += newWh.size();
+            } else {
+                // Level 1-3：逐条插入，需要返回 ID
+                for (Warehouse w : newWh) {
+                    if (w.getCode() == null || w.getCode().isEmpty()) {
+                        w.setCode(generateWarehouseCode());
+                    }
+                    takenCodes.add(w.getCode());
+                    warehouseMapper.insert(w);
+                    cache.put(w.getName() + ":" + (w.getParentId() == null ? 0 : w.getParentId()), w.getId());
+                    created++;
+                }
             }
         }
         return created;
+    }
+
+    /** 批量预生成编码 */
+    private synchronized List<String> generateWarehouseCodes(int count) {
+        List<String> codes = new ArrayList<>(count);
+        String prefix = "WH";
+        String dateStr = DateUtil.format(new Date(), "yyyyMMdd");
+        String likePrefix = prefix + dateStr;
+        String maxCode = warehouseMapper.selectMaxCodeByPrefix(likePrefix);
+        int seq = 1;
+        if (maxCode != null) {
+            seq = Integer.parseInt(maxCode.substring(maxCode.length() - 6)) + 1;
+        }
+        for (int i = 0; i < count; i++) {
+            codes.add(likePrefix + String.format("%06d", seq + i));
+        }
+        return codes;
     }
 }

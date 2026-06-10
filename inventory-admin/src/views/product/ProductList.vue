@@ -2,18 +2,18 @@
 import { ref, onMounted, reactive, watch } from 'vue'
 import request, { downloadFile } from '../../api/request'
 import type { Product, PageResult, PageParams } from '../../types/api'
-import { ElMessage, ElMessageBox, ElForm } from 'element-plus'
+import { ElMessage, ElMessageBox, ElForm, ElLoading } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../store/user'
+import { useWarehouseCascaderProps } from '../../composables/useWarehouseLazy'
 
 const router = useRouter()
 const userStore = useUserStore()
+const whCascaderProps = useWarehouseCascaderProps()
 const loading = ref(false)
 const products = ref<Product[]>([])
 const total = ref(0)
 const selectedIds = ref<number[]>([])
-const warehouseTree = ref<any[]>([])
-
 const query = reactive<PageParams & {
   name?: string; code?: string; status?: number; alertOnly?: boolean;
   warehouseId?: number; categoryId?: number;
@@ -130,26 +130,33 @@ async function handleToggleStatus(row: Product) {
   fetchData()
 }
 
-function handleExport(selected = false) {
-  if (selected && selectedIds.value.length) {
-    downloadFile(`/product/export?ids=${selectedIds.value.join(',')}`, '商品管理.xlsx')
-    return
+async function handleExport(selected = false) {
+  const msg = ElMessage({ message: '正在导出，请稍候...', type: 'info', duration: 0 })
+  try {
+    if (selected && selectedIds.value.length) {
+      await downloadFile(`/product/export?ids=${selectedIds.value.join(',')}`, '商品管理.xlsx')
+      msg.close()
+      return
+    }
+    const params = new URLSearchParams()
+    if (query.name) params.append('name', query.name)
+    if (query.code) params.append('code', query.code)
+    if (query.status !== undefined) params.append('status', String(query.status))
+    if (query.warehouseId) params.append('warehouseId', String(query.warehouseId))
+    if (query.categoryId) params.append('categoryId', String(query.categoryId))
+    if (query.alertOnly !== undefined) params.append('alertOnly', String(query.alertOnly))
+    if (query.minPrice) params.append('minPrice', String(query.minPrice))
+    if (query.maxPrice) params.append('maxPrice', String(query.maxPrice))
+    if (query.minSalePrice) params.append('minSalePrice', String(query.minSalePrice))
+    if (query.maxSalePrice) params.append('maxSalePrice', String(query.maxSalePrice))
+    if (query.startDate) params.append('startDate', query.startDate)
+    if (query.endDate) params.append('endDate', query.endDate)
+    const qs = params.toString()
+    await downloadFile(`/product/export${qs ? '?' + qs : ''}`, '商品管理.xlsx')
+    msg.close()
+  } catch {
+    msg.close()
   }
-  const params = new URLSearchParams()
-  if (query.name) params.append('name', query.name)
-  if (query.code) params.append('code', query.code)
-  if (query.status !== undefined) params.append('status', String(query.status))
-  if (query.warehouseId) params.append('warehouseId', String(query.warehouseId))
-  if (query.categoryId) params.append('categoryId', String(query.categoryId))
-  if (query.alertOnly !== undefined) params.append('alertOnly', String(query.alertOnly))
-  if (query.minPrice) params.append('minPrice', String(query.minPrice))
-  if (query.maxPrice) params.append('maxPrice', String(query.maxPrice))
-  if (query.minSalePrice) params.append('minSalePrice', String(query.minSalePrice))
-  if (query.maxSalePrice) params.append('maxSalePrice', String(query.maxSalePrice))
-  if (query.startDate) params.append('startDate', query.startDate)
-  if (query.endDate) params.append('endDate', query.endDate)
-  const qs = params.toString()
-  downloadFile(`/product/export${qs ? '?' + qs : ''}`, '商品管理.xlsx')
 }
 
 const fileInput = ref<HTMLInputElement>()
@@ -159,11 +166,23 @@ async function onFileChange(e: Event) {
   if (!files?.length) return
   const formData = new FormData()
   formData.append('file', files[0])
+  const loading = ElLoading.service({ fullscreen: true, text: '正在导入，请稍候...' })
   try {
     const res = await request.post('/product/import', formData)
-    ElMessage.success(res.data.message)
+    const data = res.data.data
+    loading.close()
+    // 弹出详细结果
+    if (data.failure > 0) {
+      await ElMessageBox.alert(data.summary.replace(/\n/g, '<br/>'), '导入完成（有失败）', {
+        dangerouslyUseHTMLString: true, type: 'warning', confirmButtonText: '知道了',
+      })
+    } else {
+      ElMessage.success(`导入成功！共 ${data.total} 条`)
+    }
     fetchData()
-  } catch { /* handled */ }
+  } catch {
+    loading.close()
+  }
   (e.target as HTMLInputElement).value = ''
 }
 
@@ -237,7 +256,7 @@ async function handlePrintSingleBarcode(row: Product) {
   } catch { ElMessage.error('获取条码失败') }
 }
 
-onMounted(async () => { const r = await request.get('/warehouse/tree'); warehouseTree.value = r.data.data || []; fetchCategories(); fetchData() })
+onMounted(async () => { fetchCategories(); fetchData() })
 </script>
 
 <template>
@@ -262,9 +281,11 @@ onMounted(async () => { const r = await request.get('/warehouse/tree'); warehous
     <div class="search-bar">
       <el-input v-model="query.name" placeholder="商品名称" clearable style="width: 200px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-input v-model="query.code" placeholder="商品编码" clearable style="width: 160px" @keyup.enter="handleSearch" @clear="handleSearch" />
-      <el-input v-model="query.minPrice" placeholder="最低采购价" type="number" style="width:120px" @keyup.enter="handleSearch" />
-      <span style="color:#999">-</span>
-      <el-input v-model="query.maxPrice" placeholder="最高采购价" type="number" style="width:120px" @keyup.enter="handleSearch" />
+      <template v-if="userStore.isAdmin">
+        <el-input v-model="query.minPrice" placeholder="最低采购价" type="number" style="width:120px" @keyup.enter="handleSearch" />
+        <span style="color:#999">-</span>
+        <el-input v-model="query.maxPrice" placeholder="最高采购价" type="number" style="width:120px" @keyup.enter="handleSearch" />
+      </template>
       <el-input v-model="query.minSalePrice" placeholder="最低销售价" type="number" style="width:120px" @keyup.enter="handleSearch" />
       <span style="color:#999">-</span>
       <el-input v-model="query.maxSalePrice" placeholder="最高销售价" type="number" style="width:120px" @keyup.enter="handleSearch" />
@@ -280,13 +301,7 @@ onMounted(async () => { const r = await request.get('/warehouse/tree'); warehous
         <el-option label="启用" :value="1" />
         <el-option label="停用" :value="0" />
       </el-select>
-      <el-cascader v-model="whPath" :options="warehouseTree" :props="{ label: 'name', children: 'children', value: 'id', emitPath: false, checkStrictly: true }" placeholder="全部仓库" clearable filterable style="width: 160px" @change="onWhChange">
-        <template #default="{ data }">
-          <span>{{ data.name }}</span>
-          <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:4px;">虚拟</el-tag>
-          <span v-else style="font-size:11px;color:#2e7d32;margin-left:4px;">库存{{ data.productCount || 0 }}</span>
-        </template>
-      </el-cascader>
+      <el-cascader v-model="whPath" :props="whCascaderProps" placeholder="全部仓库" clearable filterable style="width: 160px" @change="onWhChange" />
       <el-tree-select
         v-model="query.categoryId"
         :data="categories"
@@ -347,7 +362,7 @@ onMounted(async () => { const r = await request.get('/warehouse/tree'); warehous
         </el-table-column>
         <el-table-column prop="unit" label="单位" width="80" />
         <el-table-column prop="categoryName" label="分类" width="80" />
-        <el-table-column prop="purchasePrice" label="采购价" sortable width="80">
+        <el-table-column v-if="userStore.isAdmin" prop="purchasePrice" label="采购价" sortable width="80">
           <template #default="{ row }">¥{{ row.purchasePrice }}</template>
         </el-table-column>
         <el-table-column prop="salePrice" label="销售价" sortable width="80">
@@ -441,7 +456,7 @@ onMounted(async () => { const r = await request.get('/warehouse/tree'); warehous
         </el-row>
         <el-row :gutter="16">
           <el-col :span="12">
-            <el-form-item label="采购参考价" prop="purchasePrice">
+            <el-form-item v-if="userStore.isAdmin" label="采购参考价" prop="purchasePrice">
               <el-input-number v-model="form.purchasePrice" :precision="2" :min="0" style="width: 100%" />
             </el-form-item>
           </el-col>

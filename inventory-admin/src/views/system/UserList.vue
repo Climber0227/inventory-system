@@ -64,7 +64,7 @@ onMounted(fetchData)
 
 <template>
   <div>
-    <div class="page-header"><h2>员工管理</h2><el-button type="primary" @click="openCreate">+ 新增员工</el-button></div>
+    <div class="page-header"><h2>员工管理</h2><el-button type="primary" @click="openCreate">+ 新增角色</el-button></div>
     <div class="search-bar">
       <el-input v-model="query.username" placeholder="账号" clearable style="width:150px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-input v-model="query.realName" placeholder="姓名" clearable style="width:150px" @keyup.enter="handleSearch" @clear="handleSearch" />

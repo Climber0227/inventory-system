@@ -50,8 +50,11 @@ async function fetchData() {
 function handleSearch() { query.page = 1; fetchData() }
 function handleReset() { query.orderNo = ''; query.outWarehouseId = undefined; query.inWarehouseId = undefined; query.status = undefined; query.minQuantity = undefined; query.maxQuantity = undefined; query.operatorName = ''; query.startDate = ''; query.endDate = ''; handleSearch() }
 async function handleCancel(row: any) {
-  await request.put(`/transfer/${row.id}/cancel`)
-  ElMessage.success('已取消'); fetchData()
+  try {
+    await ElMessageBox.confirm(`确定取消调拨单「${row.orderNo}」？`, { title: '取消确认', type: 'warning', confirmButtonText: '确定取消', cancelButtonText: '返回' })
+    await request.put(`/transfer/${row.id}/cancel`)
+    ElMessage.success('已取消'); fetchData()
+  } catch {}
 }
 async function handleDelete(row: any) {
   try {
@@ -109,7 +112,7 @@ function handleExport(selected = false) {
   downloadFile(url, '库存调拨.xlsx')
 }
 onMounted(async () => {
-  const wRes = await request.get('/warehouse/tree')
+  const wRes = await request.get('/warehouse/tree?stats=false')
   warehouses.value = wRes.data.data || []
   fetchData()
 })
@@ -159,10 +162,10 @@ onMounted(async () => {
         <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
             <el-button size="small" @click="router.push(`/transfer/${row.id}`)">详情</el-button>
+            <el-button v-if="row.status === 0" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
             <el-button v-if="row.status === 0" size="small" @click="router.push(`/transfer/create?edit=${row.id}`)">编辑</el-button>
             <el-button v-if="userStore.isAdmin && row.status === 4" size="small" type="success" @click="handleApprove(row)">通过</el-button>
             <el-button v-if="userStore.isAdmin && row.status === 4" size="small" type="warning" @click="handleReject(row)">驳回</el-button>
-            <el-button v-if="row.status === 0" size="small" type="warning" @click="handleCancel(row)">取消</el-button>
             <el-button v-if="userStore.isAdmin && (row.status === 0 || row.status === 2)" size="small" type="danger" @click="handleDelete(row)">作废</el-button>
           </template>
         </el-table-column>

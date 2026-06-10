@@ -29,7 +29,20 @@ async function fetchDetail() {
   try {
     const res = await request.get(`/stock-take/${id}`)
     order.value = res.data
-    items.value = (res.data.items || []).map(i => ({ ...i }))
+    const rawItems = res.data.items || []
+    // 加载仓库库存以补充入库时间
+    if (order.value?.warehouseId && rawItems.length > 0) {
+      try {
+        const invRes = await request.get('/inventory/page', { params: { warehouseId: order.value.warehouseId, page: 1, size: 9999 } })
+        const invList = invRes.data.records || []
+        items.value = rawItems.map(i => {
+          const inv = invList.find(r => r.productId === i.productId && r.batchNo === i.batchNo)
+          return { ...i, stockDate: inv?.createTime?.substring(0, 16) || '' }
+        })
+      } catch { items.value = rawItems.map(i => ({ ...i })) }
+    } else {
+      items.value = rawItems.map(i => ({ ...i }))
+    }
   } finally { loading.value = false }
 }
 
@@ -56,6 +69,7 @@ async function adjustTake() {
 async function saveItem(item) {
   try {
     await request.put(`/stock-take/item/${item.id}`, { actualQty: item.actualQty })
+    item.diffQty = (item.actualQty || 0) - (item.bookQty || 0)
   } catch { /* ignore */ }
 }
 </script>
@@ -87,6 +101,10 @@ async function saveItem(item) {
         <view class="item-info">
           <text class="item-name">{{ item.productName || '-' }}</text>
           <text class="item-code">{{ item.productCode || '' }}</text>
+        </view>
+        <view v-if="item.batchNo || item.stockDate" class="item-batch">
+          <text v-if="item.batchNo" class="batch-text">{{ item.batchNo }}</text>
+          <text v-if="item.stockDate" class="batch-date">{{ item.stockDate }}</text>
         </view>
         <view class="qty-row">
           <view class="qty-field">
@@ -135,6 +153,9 @@ async function saveItem(item) {
 .item-info { display: flex; align-items: baseline; gap: 6px; margin-bottom: 8px; }
 .item-name { font-size: 14px; font-weight: 500; }
 .item-code { font-size: 11px; color: #999; }
+.item-batch { display: flex; gap: 8px; margin-bottom: 6px; }
+.batch-text { font-size: 11px; color: #2e7d32; background: #e8f5e9; padding: 1px 6px; border-radius: 4px; }
+.batch-date { font-size: 11px; color: #999; }
 .qty-row { display: flex; gap: 12px; }
 .qty-field { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
 .label-sm { font-size: 12px; color: #666; }

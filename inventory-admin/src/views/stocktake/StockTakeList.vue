@@ -79,7 +79,7 @@ function handleExport(selected = false) {
   downloadFile(url, '库存盘点.xlsx')
 }
 onMounted(async () => {
-  const wRes = await request.get('/warehouse/tree')
+  const wRes = await request.get('/warehouse/tree?stats=false')
   warehouses.value = wRes.data.data || []
   fetchData()
 })

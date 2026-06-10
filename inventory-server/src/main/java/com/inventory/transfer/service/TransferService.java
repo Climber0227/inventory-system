@@ -11,6 +11,7 @@ import com.inventory.inventory.mapper.InventoryLogMapper;
 import com.inventory.inventory.mapper.InventoryMapper;
 import com.inventory.product.entity.Product;
 import com.inventory.product.mapper.ProductMapper;
+import cn.dev33.satoken.stp.StpUtil;
 import com.inventory.system.entity.SysUser;
 import com.inventory.system.mapper.SysUserMapper;
 import com.inventory.transfer.entity.InventoryTransfer;
@@ -28,9 +29,7 @@ import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -60,11 +59,20 @@ public class TransferService {
         this.productMapper = productMapper;
     }
 
+    private boolean isAdmin() {
+        try {
+            long uid = StpUtil.getLoginIdAsLong();
+            SysUser u = userMapper.selectById(uid);
+            return u != null && u.getRole() != null && u.getRole() == 1;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
     public Page<InventoryTransfer> page(Page<InventoryTransfer> page, String orderNo,
                                         Long fromWarehouseId, Long toWarehouseId, Integer status,
                                         Integer minQuantity, Integer maxQuantity, String operatorName,
                                         LocalDate startDate, LocalDate endDate) {
-        // MyBatis-Plus 的条件参数会先求值，需要先判空
         LocalDateTime startDateTime = startDate != null ? startDate.atStartOfDay() : null;
         LocalDateTime endDateTime = endDate != null ? endDate.atTime(LocalTime.MAX) : null;
         LambdaQueryWrapper<InventoryTransfer> wrapper = new LambdaQueryWrapper<InventoryTransfer>()
@@ -79,13 +87,8 @@ public class TransferService {
                 .ne(InventoryTransfer::getStatus, OrderStatus.VOIDED)
                 .orderByDesc(InventoryTransfer::getId);
         Page<InventoryTransfer> result = transferMapper.selectPage(page, wrapper);
+        enrichTransfersBatch(result.getRecords());
 
-        // 先填充关联数据（操作人名称等）
-        for (InventoryTransfer t : result.getRecords()) {
-            enrichOrder(t);
-        }
-
-        // 如果传了操作人名称，在内存中过滤
         if (operatorName != null && !operatorName.isEmpty()) {
             List<InventoryTransfer> filtered = result.getRecords().stream()
                     .filter(t -> t.getOperatorName() != null && t.getOperatorName().contains(operatorName))
@@ -93,14 +96,13 @@ public class TransferService {
             result.setRecords(filtered);
             result.setTotal(filtered.size());
         }
-
         return result;
     }
 
     public List<InventoryTransfer> listAll() {
         List<InventoryTransfer> list = transferMapper.selectList(
                 new LambdaQueryWrapper<InventoryTransfer>().orderByDesc(InventoryTransfer::getId));
-        for (InventoryTransfer t : list) enrichOrder(t);
+        enrichTransfersBatch(list);
         return list;
     }
 
@@ -110,19 +112,64 @@ public class TransferService {
             List<InventoryTransferItem> items = transferItemMapper.selectList(
                     new LambdaQueryWrapper<InventoryTransferItem>()
                             .eq(InventoryTransferItem::getTransferId, id));
-            enrichItems(items);
             transfer.setItems(items);
-            enrichOrder(transfer);
+            enrichTransfersBatch(List.of(transfer));
         }
         return transfer;
     }
 
+    private void enrichTransfersBatch(List<InventoryTransfer> transfers) {
+        if (transfers == null || transfers.isEmpty()) return;
+        Set<Long> transferIds = new HashSet<>();
+        Set<Long> warehouseIds = new HashSet<>();
+        Set<Long> userIds = new HashSet<>();
+        for (InventoryTransfer t : transfers) {
+            transferIds.add(t.getId());
+            if (t.getFromWarehouseId() != null) warehouseIds.add(t.getFromWarehouseId());
+            if (t.getToWarehouseId() != null) warehouseIds.add(t.getToWarehouseId());
+            if (t.getOperatorId() != null) userIds.add(t.getOperatorId());
+            if (t.getApproverId() != null) userIds.add(t.getApproverId());
+        }
+        List<InventoryTransferItem> allItems = transferIds.isEmpty() ? List.of()
+                : transferItemMapper.selectList(
+                    new LambdaQueryWrapper<InventoryTransferItem>().in(InventoryTransferItem::getTransferId, transferIds));
+        Map<Long, List<InventoryTransferItem>> itemMap = allItems.stream()
+                .collect(Collectors.groupingBy(InventoryTransferItem::getTransferId));
+        Set<Long> productIds = allItems.stream().map(InventoryTransferItem::getProductId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, Warehouse> warehouseMap = warehouseIds.isEmpty() ? new HashMap<>()
+                : warehouseMapper.selectBatchIds(warehouseIds).stream()
+                    .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        Map<Long, SysUser> userMap = userIds.isEmpty() ? new HashMap<>()
+                : userMapper.selectBatchIds(userIds).stream()
+                    .collect(Collectors.toMap(SysUser::getId, u -> u, (a, b) -> a));
+        Map<Long, Product> productMap = productIds.isEmpty() ? new HashMap<>()
+                : productMapper.selectBatchIds(productIds).stream()
+                    .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+        for (InventoryTransfer t : transfers) {
+            Warehouse fw = warehouseMap.get(t.getFromWarehouseId());
+            if (fw != null) t.setFromWarehouseName(fw.getName());
+            Warehouse tw = warehouseMap.get(t.getToWarehouseId());
+            if (tw != null) t.setToWarehouseName(tw.getName());
+            SysUser op = userMap.get(t.getOperatorId());
+            if (op != null) t.setOperatorName(op.getRealName());
+            SysUser ap = userMap.get(t.getApproverId());
+            if (ap != null) t.setApproverName(ap.getRealName());
+            List<InventoryTransferItem> items = itemMap.getOrDefault(t.getId(), List.of());
+            for (InventoryTransferItem item : items) {
+                Product p = productMap.get(item.getProductId());
+                if (p != null) { item.setProductName(p.getName()); item.setProductCode(p.getCode()); }
+            }
+            t.setItems(items);
+        }
+    }
+
     public List<TransferDetailExportVO> getExportDetailList(List<InventoryTransfer> list) {
+        // 先批量预加载所有关联数据（items + products + warehouses + users）
+        enrichTransfersBatch(list);
         List<TransferDetailExportVO> result = new ArrayList<>();
         for (InventoryTransfer t : list) {
-            List<InventoryTransferItem> items = transferItemMapper.selectList(
-                    new LambdaQueryWrapper<InventoryTransferItem>().eq(InventoryTransferItem::getTransferId, t.getId()));
-            enrichItems(items);
+            List<InventoryTransferItem> items = t.getItems() != null ? t.getItems() : List.of();
             for (InventoryTransferItem item : items) {
                 TransferDetailExportVO vo = new TransferDetailExportVO();
                 vo.setOrderNo(t.getOrderNo());
@@ -148,37 +195,6 @@ public class TransferService {
             }
         }
         return result;
-    }
-
-    private void enrichOrder(InventoryTransfer t) {
-        if (t.getFromWarehouseId() != null) {
-            Warehouse w = warehouseMapper.selectById(t.getFromWarehouseId());
-            if (w != null) t.setFromWarehouseName(w.getName());
-        }
-        if (t.getToWarehouseId() != null) {
-            Warehouse w = warehouseMapper.selectById(t.getToWarehouseId());
-            if (w != null) t.setToWarehouseName(w.getName());
-        }
-        if (t.getOperatorId() != null) {
-            SysUser u = userMapper.selectById(t.getOperatorId());
-            if (u != null) t.setOperatorName(u.getRealName());
-        }
-        if (t.getApproverId() != null) {
-            SysUser u = userMapper.selectById(t.getApproverId());
-            if (u != null) t.setApproverName(u.getRealName());
-        }
-    }
-
-    private void enrichItems(List<InventoryTransferItem> items) {
-        for (InventoryTransferItem item : items) {
-            if (item.getProductId() != null) {
-                Product p = productMapper.selectById(item.getProductId());
-                if (p != null) {
-                    item.setProductName(p.getName());
-                    item.setProductCode(p.getCode());
-                }
-            }
-        }
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -262,49 +278,78 @@ public class TransferService {
         List<InventoryTransferItem> items = transferItemMapper.selectList(
                 new LambdaQueryWrapper<InventoryTransferItem>().eq(InventoryTransferItem::getTransferId, id));
 
-        // 扣减源仓库库存
+        // 扣减源仓库库存（优先指定批次，否则后进先出）
         for (InventoryTransferItem item : items) {
-            LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
-                    .eq(Inventory::getProductId, item.getProductId())
-                    .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
-                    .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo())
-                    .last("LIMIT 1");
-            Inventory inv = inventoryMapper.selectOne(wrapper);
-            int available = (inv != null ? inv.getQuantity() : 0) - (inv != null ? inv.getLockedQty() : 0);
-            if (available < item.getQuantity()) {
-                throw new BusinessException("商品库存不足");
+            int toReduce = item.getQuantity();
+            int totalBefore;
+
+            if (item.getBatchNo() != null && !item.getBatchNo().isEmpty()) {
+                // 指定批次：只从该批次扣
+                Inventory target = inventoryMapper.selectOne(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
+                                .eq(Inventory::getBatchNo, item.getBatchNo()));
+                if (target == null || target.getQuantity() < toReduce) {
+                    throw new BusinessException("所选批次库存不足");
+                }
+                totalBefore = target.getQuantity();
+                target.setQuantity(totalBefore - toReduce);
+                inventoryMapper.updateById(target);
+            } else {
+                // 未指定批次：后进先出
+                List<Inventory> batches = inventoryMapper.selectList(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
+                                .gt(Inventory::getQuantity, 0)
+                                .orderByDesc(Inventory::getCreateTime));
+                int totalAvailable = batches.stream().mapToInt(Inventory::getQuantity).sum();
+                if (totalAvailable < toReduce) {
+                    throw new BusinessException("商品库存不足（可用: " + totalAvailable + "，需调拨: " + toReduce + "）");
+                }
+                totalBefore = totalAvailable;
+                for (Inventory inv : batches) {
+                    if (toReduce <= 0) break;
+                    int reduce = Math.min(inv.getQuantity(), toReduce);
+                    inv.setQuantity(inv.getQuantity() - reduce);
+                    toReduce -= reduce;
+                    inventoryMapper.updateById(inv);
+                }
             }
-
-            int beforeQty = inv.getQuantity();
-            int afterQty = beforeQty - item.getQuantity();
-            inv.setQuantity(afterQty);
-            inventoryMapper.updateById(inv);
-
-            // 记录调出日志
             InventoryLog outLog = new InventoryLog();
             outLog.setProductId(item.getProductId());
             outLog.setWarehouseId(transfer.getFromWarehouseId());
-            outLog.setBatchNo(item.getBatchNo());
             outLog.setChangeType("TRANSFER_OUT");
             outLog.setChangeQty(-item.getQuantity());
-            outLog.setBeforeQty(beforeQty);
-            outLog.setAfterQty(afterQty);
+            outLog.setBeforeQty(totalBefore);
+            outLog.setAfterQty(totalBefore - item.getQuantity());
             outLog.setRefOrderNo(transfer.getOrderNo());
             outLog.setOperatorId(transfer.getOperatorId());
             outLog.setRemark("调拨出库");
             inventoryLogMapper.insert(outLog);
         }
 
-        // 增加目标仓库库存
+        // 增加目标仓库库存（每次调入生成新批次行）
         for (InventoryTransferItem item : items) {
-            // 获取调出仓库该商品的成本价（同一商品同一仓库下所有批次成本价一致）
-            Inventory srcInv = inventoryMapper.selectOne(
-                    new LambdaQueryWrapper<Inventory>()
-                            .eq(Inventory::getProductId, item.getProductId())
-                            .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
-                            .last("LIMIT 1"));
-            BigDecimal srcCost = srcInv != null && srcInv.getCostPrice() != null
-                    ? srcInv.getCostPrice() : BigDecimal.ZERO;
+            // 获取调出仓库该商品的成本价（优先取指定批次）
+            List<Inventory> srcBatches;
+            if (item.getBatchNo() != null && !item.getBatchNo().isEmpty()) {
+                srcBatches = inventoryMapper.selectList(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
+                                .eq(Inventory::getBatchNo, item.getBatchNo()));
+            } else {
+                srcBatches = inventoryMapper.selectList(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId()));
+            }
+            BigDecimal srcCost = BigDecimal.ZERO;
+            if (!srcBatches.isEmpty() && srcBatches.get(0).getCostPrice() != null) {
+                srcCost = srcBatches.get(0).getCostPrice();
+            }
 
             // 计算目标仓库调整前的总金额和总数量
             List<Inventory> destBatches = inventoryMapper.selectList(
@@ -321,45 +366,25 @@ public class TransferService {
                 destOldQty += b.getQuantity();
             }
 
-            LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
-                    .eq(Inventory::getProductId, item.getProductId())
-                    .eq(Inventory::getWarehouseId, transfer.getToWarehouseId())
-                    .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo())
-                    .last("LIMIT 1");
-            Inventory inv = inventoryMapper.selectOne(wrapper);
-            int beforeQty = inv != null ? inv.getQuantity() : 0;
-            int afterQty = beforeQty + item.getQuantity();
-
-            if (inv != null) {
-                inv.setQuantity(afterQty);
-                inventoryMapper.updateById(inv);
-            } else {
-                inv = new Inventory();
-                inv.setProductId(item.getProductId());
-                inv.setWarehouseId(transfer.getToWarehouseId());
-                inv.setBatchNo(item.getBatchNo());
-                inv.setQuantity(item.getQuantity());
-                inv.setLockedQty(0);
-                inventoryMapper.insert(inv);
-            }
-
-            // 移动加权平均：新均价 = (目标仓库原总金额 + 调入数量×源仓库成本价) ÷ (原数量 + 调入数量)
-            int destNewQty = destOldQty + item.getQuantity();
-            BigDecimal transferValue = srcCost.multiply(BigDecimal.valueOf(item.getQuantity()));
-            BigDecimal destNewValue = destOldValue.add(transferValue);
-            BigDecimal destAvg = BigDecimal.ZERO;
-            if (destNewQty > 0) {
-                destAvg = destNewValue.divide(BigDecimal.valueOf(destNewQty), 4, RoundingMode.HALF_UP);
-            }
-            // 统一设置目标仓库该商品所有批次的成本价
-            List<Inventory> allDestBatches = inventoryMapper.selectList(
+            // 每次调入生成新库存行
+            String inBatchNo = (item.getBatchNo() != null && !item.getBatchNo().isEmpty())
+                    ? item.getBatchNo()
+                    : "TR" + transfer.getOrderDate().toString().replace("-", "");
+            long sameDayCount = inventoryMapper.selectCount(
                     new LambdaQueryWrapper<Inventory>()
                             .eq(Inventory::getProductId, item.getProductId())
-                            .eq(Inventory::getWarehouseId, transfer.getToWarehouseId()));
-            for (Inventory b : allDestBatches) {
-                b.setCostPrice(destAvg);
-                inventoryMapper.updateById(b);
-            }
+                            .eq(Inventory::getWarehouseId, transfer.getToWarehouseId())
+                            .likeRight(Inventory::getBatchNo, inBatchNo));
+            if (sameDayCount > 0) inBatchNo = inBatchNo + "-" + (sameDayCount + 1);
+            Inventory inv = new Inventory();
+            inv.setProductId(item.getProductId());
+            inv.setWarehouseId(transfer.getToWarehouseId());
+            inv.setBatchNo(inBatchNo);
+            // 成本价沿用源仓库该批次的成本价
+            inv.setCostPrice(srcCost);
+            inv.setQuantity(item.getQuantity());
+            inv.setLockedQty(0);
+            inventoryMapper.insert(inv);
 
             // 记录调入日志
             InventoryLog inLog = new InventoryLog();
@@ -368,8 +393,8 @@ public class TransferService {
             inLog.setBatchNo(item.getBatchNo());
             inLog.setChangeType("TRANSFER_IN");
             inLog.setChangeQty(item.getQuantity());
-            inLog.setBeforeQty(beforeQty);
-            inLog.setAfterQty(afterQty);
+            inLog.setBeforeQty(destOldQty);
+            inLog.setAfterQty(destOldQty + item.getQuantity());
             inLog.setRefOrderNo(transfer.getOrderNo());
             inLog.setOperatorId(transfer.getOperatorId());
             inLog.setRemark("调拨入库");
@@ -459,65 +484,81 @@ public class TransferService {
             List<InventoryTransferItem> items = transferItemMapper.selectList(
                     new LambdaQueryWrapper<InventoryTransferItem>().eq(InventoryTransferItem::getTransferId, id));
 
-            // 回滚目标仓库：扣减调入的库存
+            // 回滚目标仓库：从最新批次扣减（后进先出）
             for (InventoryTransferItem item : items) {
-                LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
-                        .eq(Inventory::getProductId, item.getProductId())
-                        .eq(Inventory::getWarehouseId, transfer.getToWarehouseId())
-                        .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo())
-                        .last("LIMIT 1");
-                Inventory inv = inventoryMapper.selectOne(wrapper);
-                if (inv != null) {
-                    int beforeQty = inv.getQuantity();
-                    int afterQty = beforeQty - item.getQuantity();
-                    if (afterQty < 0) {
-                        throw new BusinessException("目标仓库库存不足，无法取消调拨（当前库存: " + beforeQty + "，需扣减: " + item.getQuantity() + "）");
-                    }
-                    inv.setQuantity(afterQty);
-                    inventoryMapper.updateById(inv);
-
-                    InventoryLog log = new InventoryLog();
-                    log.setProductId(item.getProductId());
-                    log.setWarehouseId(transfer.getToWarehouseId());
-                    log.setBatchNo(item.getBatchNo());
-                    log.setChangeType("TRANSFER_CANCEL");
-                    log.setChangeQty(-item.getQuantity());
-                    log.setBeforeQty(beforeQty);
-                    log.setAfterQty(afterQty);
-                    log.setRefOrderNo(transfer.getOrderNo());
-                    log.setOperatorId(transfer.getOperatorId());
-                    log.setRemark("调拨取消，回滚入库库存");
-                    inventoryLogMapper.insert(log);
+                List<Inventory> batches = inventoryMapper.selectList(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, transfer.getToWarehouseId())
+                                .gt(Inventory::getQuantity, 0)
+                                .orderByDesc(Inventory::getCreateTime));
+                int totalAvailable = batches.stream().mapToInt(Inventory::getQuantity).sum();
+                if (totalAvailable < item.getQuantity()) {
+                    throw new BusinessException("目标仓库库存不足，无法取消调拨");
                 }
+                int toReduce = item.getQuantity();
+                for (Inventory inv : batches) {
+                    if (toReduce <= 0) break;
+                    int beforeQty = inv.getQuantity();
+                    int reduce = Math.min(beforeQty, toReduce);
+                    inv.setQuantity(beforeQty - reduce);
+                    toReduce -= reduce;
+                    inventoryMapper.updateById(inv);
+                }
+                InventoryLog log = new InventoryLog();
+                log.setProductId(item.getProductId());
+                log.setWarehouseId(transfer.getToWarehouseId());
+                log.setChangeType("TRANSFER_CANCEL");
+                log.setChangeQty(-item.getQuantity());
+                log.setBeforeQty(totalAvailable);
+                log.setAfterQty(totalAvailable - item.getQuantity());
+                log.setRefOrderNo(transfer.getOrderNo());
+                log.setOperatorId(transfer.getOperatorId());
+                log.setRemark("调拨取消，回滚入库库存");
+                inventoryLogMapper.insert(log);
             }
 
-            // 回滚源仓库：恢复调出的库存
+            // 回滚源仓库：创建新库存行恢复调出的库存
             for (InventoryTransferItem item : items) {
-                LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
-                        .eq(Inventory::getProductId, item.getProductId())
-                        .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
-                        .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo())
-                        .last("LIMIT 1");
-                Inventory inv = inventoryMapper.selectOne(wrapper);
-                if (inv != null) {
-                    int beforeQty = inv.getQuantity();
-                    int afterQty = beforeQty + item.getQuantity();
-                    inv.setQuantity(afterQty);
-                    inventoryMapper.updateById(inv);
-
-                    InventoryLog log = new InventoryLog();
-                    log.setProductId(item.getProductId());
-                    log.setWarehouseId(transfer.getFromWarehouseId());
-                    log.setBatchNo(item.getBatchNo());
-                    log.setChangeType("TRANSFER_CANCEL");
-                    log.setChangeQty(item.getQuantity());
-                    log.setBeforeQty(beforeQty);
-                    log.setAfterQty(afterQty);
-                    log.setRefOrderNo(transfer.getOrderNo());
-                    log.setOperatorId(transfer.getOperatorId());
-                    log.setRemark("调拨取消，回滚出库库存");
-                    inventoryLogMapper.insert(log);
+                String retBatchNo = "TRRET" + transfer.getOrderDate().toString().replace("-", "");
+                long sameDayCount = inventoryMapper.selectCount(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId())
+                                .likeRight(Inventory::getBatchNo, retBatchNo));
+                if (sameDayCount > 0) retBatchNo = retBatchNo + "-" + (sameDayCount + 1);
+                Inventory inv = new Inventory();
+                inv.setProductId(item.getProductId());
+                inv.setWarehouseId(transfer.getFromWarehouseId());
+                inv.setBatchNo(retBatchNo);
+                inv.setQuantity(item.getQuantity());
+                inv.setLockedQty(0);
+                // 沿用该仓库当前均价
+                List<Inventory> allSrcBatches = inventoryMapper.selectList(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, transfer.getFromWarehouseId()));
+                BigDecimal totalValue = BigDecimal.ZERO;
+                int totalQty = 0;
+                for (Inventory b : allSrcBatches) {
+                    if (b.getQuantity() > 0 && b.getCostPrice() != null) {
+                        totalValue = totalValue.add(b.getCostPrice().multiply(BigDecimal.valueOf(b.getQuantity())));
+                        totalQty += b.getQuantity();
+                    }
                 }
+                inv.setCostPrice(totalQty > 0 ? totalValue.divide(BigDecimal.valueOf(totalQty), 4, RoundingMode.HALF_UP) : BigDecimal.ZERO);
+                inventoryMapper.insert(inv);
+                InventoryLog log = new InventoryLog();
+                log.setProductId(item.getProductId());
+                log.setWarehouseId(transfer.getFromWarehouseId());
+                log.setChangeType("TRANSFER_CANCEL");
+                log.setChangeQty(item.getQuantity());
+                log.setBeforeQty(totalQty);
+                log.setAfterQty(totalQty + item.getQuantity());
+                log.setRefOrderNo(transfer.getOrderNo());
+                log.setOperatorId(transfer.getOperatorId());
+                log.setRemark("调拨取消，回滚出库库存");
+                inventoryLogMapper.insert(log);
             }
         }
 

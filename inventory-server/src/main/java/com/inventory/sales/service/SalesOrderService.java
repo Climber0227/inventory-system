@@ -17,6 +17,7 @@ import com.inventory.sales.entity.SalesOrder;
 import com.inventory.sales.entity.SalesOrderItem;
 import com.inventory.sales.mapper.SalesOrderItemMapper;
 import com.inventory.sales.mapper.SalesOrderMapper;
+import com.inventory.system.entity.SysUser;
 import com.inventory.system.mapper.SysUserMapper;
 import com.inventory.warehouse.entity.Warehouse;
 import com.inventory.warehouse.mapper.WarehouseMapper;
@@ -24,10 +25,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class SalesOrderService {
@@ -78,16 +80,14 @@ public class SalesOrderService {
                 .ne(SalesOrder::getStatus, OrderStatus.VOIDED)
                 .orderByDesc(SalesOrder::getId);
         Page<SalesOrder> result = salesOrderMapper.selectPage(page, wrapper);
-        for (SalesOrder o : result.getRecords()) enrichOrder(o);
+        enrichOrdersBatch(result.getRecords());
         return result;
     }
 
     public List<SalesOrder> listAll() {
         List<SalesOrder> list = salesOrderMapper.selectList(
                 new LambdaQueryWrapper<SalesOrder>().orderByDesc(SalesOrder::getId));
-        for (SalesOrder o : list) {
-            enrichOrder(o);
-        }
+        enrichOrdersBatch(list);
         return list;
     }
 
@@ -96,41 +96,60 @@ public class SalesOrderService {
         if (order != null) {
             List<SalesOrderItem> items = salesOrderItemMapper.selectList(
                     new LambdaQueryWrapper<SalesOrderItem>().eq(SalesOrderItem::getOrderId, id));
-            enrichItems(items);
             order.setItems(items);
-            enrichOrder(order);
+            enrichOrdersBatch(List.of(order));
         }
         return order;
     }
 
-    private void enrichOrder(SalesOrder o) {
-        if (o.getCustomerId() != null) {
-            Customer c = customerMapper.selectById(o.getCustomerId());
+    /** 批量预加载所有关联数据 */
+    private void enrichOrdersBatch(List<SalesOrder> orders) {
+        if (orders == null || orders.isEmpty()) return;
+        Set<Long> orderIds = new HashSet<>();
+        Set<Long> customerIds = new HashSet<>();
+        Set<Long> warehouseIds = new HashSet<>();
+        Set<Long> userIds = new HashSet<>();
+        for (SalesOrder o : orders) {
+            orderIds.add(o.getId());
+            if (o.getCustomerId() != null) customerIds.add(o.getCustomerId());
+            if (o.getWarehouseId() != null) warehouseIds.add(o.getWarehouseId());
+            if (o.getOperatorId() != null) userIds.add(o.getOperatorId());
+            if (o.getApproverId() != null) userIds.add(o.getApproverId());
+        }
+        List<SalesOrderItem> allItems = orderIds.isEmpty() ? List.of()
+                : salesOrderItemMapper.selectList(
+                    new LambdaQueryWrapper<SalesOrderItem>().in(SalesOrderItem::getOrderId, orderIds));
+        Map<Long, List<SalesOrderItem>> itemMap = allItems.stream()
+                .collect(Collectors.groupingBy(SalesOrderItem::getOrderId));
+        Set<Long> productIds = allItems.stream().map(SalesOrderItem::getProductId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, Customer> customerMap = customerIds.isEmpty() ? new HashMap<>()
+                : customerMapper.selectBatchIds(customerIds).stream()
+                    .collect(Collectors.toMap(Customer::getId, c -> c, (a, b) -> a));
+        Map<Long, Warehouse> warehouseMap = warehouseIds.isEmpty() ? new HashMap<>()
+                : warehouseMapper.selectBatchIds(warehouseIds).stream()
+                    .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        Map<Long, SysUser> userMap = userIds.isEmpty() ? new HashMap<>()
+                : userMapper.selectBatchIds(userIds).stream()
+                    .collect(Collectors.toMap(SysUser::getId, u -> u, (a, b) -> a));
+        Map<Long, Product> productMap = productIds.isEmpty() ? new HashMap<>()
+                : productMapper.selectBatchIds(productIds).stream()
+                    .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+        for (SalesOrder o : orders) {
+            Customer c = customerMap.get(o.getCustomerId());
             if (c != null) o.setCustomerName(c.getName());
-        }
-        if (o.getWarehouseId() != null) {
-            Warehouse w = warehouseMapper.selectById(o.getWarehouseId());
+            Warehouse w = warehouseMap.get(o.getWarehouseId());
             if (w != null) o.setWarehouseName(w.getName());
-        }
-        if (o.getOperatorId() != null) {
-            var u = userMapper.selectById(o.getOperatorId());
-            if (u != null) o.setOperatorName(u.getRealName());
-        }
-        if (o.getApproverId() != null) {
-            var u = userMapper.selectById(o.getApproverId());
-            if (u != null) o.setApproverName(u.getRealName());
-        }
-    }
-
-    private void enrichItems(List<SalesOrderItem> items) {
-        for (SalesOrderItem item : items) {
-            if (item.getProductId() != null) {
-                Product p = productMapper.selectById(item.getProductId());
-                if (p != null) {
-                    item.setProductName(p.getName());
-                    item.setProductCode(p.getCode());
-                }
+            SysUser op = userMap.get(o.getOperatorId());
+            if (op != null) o.setOperatorName(op.getRealName());
+            SysUser ap = userMap.get(o.getApproverId());
+            if (ap != null) o.setApproverName(ap.getRealName());
+            List<SalesOrderItem> items = itemMap.getOrDefault(o.getId(), List.of());
+            for (SalesOrderItem item : items) {
+                Product p = productMap.get(item.getProductId());
+                if (p != null) { item.setProductName(p.getName()); item.setProductCode(p.getCode()); }
             }
+            o.setItems(items);
         }
     }
 
@@ -185,6 +204,41 @@ public class SalesOrderService {
                 new LambdaQueryWrapper<SalesOrderItem>().eq(SalesOrderItem::getOrderId, id));
 
         for (SalesOrderItem item : items) {
+            int needQty = item.getQuantity();
+
+            // 如果指定了批次号，优先从该批次扣减
+            if (item.getBatchNo() != null && !item.getBatchNo().isEmpty()) {
+                Inventory targetBatch = inventoryMapper.selectOne(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, order.getWarehouseId())
+                                .eq(Inventory::getBatchNo, item.getBatchNo()));
+                if (targetBatch == null || targetBatch.getQuantity() < needQty) {
+                    int avail = targetBatch != null ? targetBatch.getQuantity() : 0;
+                    throw new BusinessException("所选批次库存不足（批次: " + item.getBatchNo() + "，可用: " + avail + "，需出库: " + needQty + "）");
+                }
+                int beforeQty = targetBatch.getQuantity();
+                targetBatch.setQuantity(beforeQty - needQty);
+                inventoryMapper.updateById(targetBatch);
+                InventoryLog log = new InventoryLog();
+                log.setProductId(item.getProductId());
+                log.setWarehouseId(order.getWarehouseId());
+                log.setBatchNo(targetBatch.getBatchNo());
+                log.setChangeType(OrderStatus.SALES_OUT);
+                log.setChangeQty(-needQty);
+                log.setBeforeQty(beforeQty);
+                log.setAfterQty(targetBatch.getQuantity());
+                log.setUnitPrice(item.getUnitPrice());
+                log.setAmount(item.getUnitPrice() != null
+                        ? item.getUnitPrice().multiply(BigDecimal.valueOf(needQty)) : BigDecimal.ZERO);
+                log.setRefOrderNo(order.getOrderNo());
+                log.setOperatorId(order.getOperatorId());
+                inventoryLogMapper.insert(log);
+                needQty = 0;
+                continue;
+            }
+
+            // 未指定批次，FIFO 扣减
             List<Inventory> batchList = inventoryMapper.selectList(
                     new LambdaQueryWrapper<Inventory>()
                             .eq(Inventory::getProductId, item.getProductId())
@@ -192,7 +246,6 @@ public class SalesOrderService {
                             .gt(Inventory::getQuantity, 0)
                             .orderByAsc(Inventory::getId));
 
-            int needQty = item.getQuantity();
             int totalAvailable = batchList.stream().mapToInt(Inventory::getQuantity).sum();
             if (totalAvailable < needQty) {
                 throw new BusinessException("商品库存不足");
@@ -258,38 +311,7 @@ public class SalesOrderService {
             return;
         }
         if (order.getStatus() == OrderStatus.CONFIRMED) {
-            // 已出库状态仅管理员可取消（涉及库存回滚）
-            long uid = cn.dev33.satoken.stp.StpUtil.getLoginIdAsLong();
-            var u = userMapper.selectById(uid);
-            if (u == null || u.getRole() == null || u.getRole() != 1) {
-                throw new BusinessException("已出库状态仅管理员可取消");
-            }
-            List<SalesOrderItem> items = salesOrderItemMapper.selectList(
-                    new LambdaQueryWrapper<SalesOrderItem>().eq(SalesOrderItem::getOrderId, id));
-            for (SalesOrderItem item : items) {
-                LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
-                        .eq(Inventory::getProductId, item.getProductId())
-                        .eq(Inventory::getWarehouseId, order.getWarehouseId())
-                        .eq(item.getBatchNo() != null && !item.getBatchNo().isEmpty(), Inventory::getBatchNo, item.getBatchNo())
-                        .last("LIMIT 1");
-                Inventory inv = inventoryMapper.selectOne(wrapper);
-                if (inv != null) {
-                    int beforeQty = inv.getQuantity();
-                    inv.setQuantity(beforeQty + item.getQuantity());
-                    inventoryMapper.updateById(inv);
-                    InventoryLog log = new InventoryLog();
-                    log.setProductId(item.getProductId());
-                    log.setWarehouseId(order.getWarehouseId());
-                    log.setChangeType("SALES_CANCEL");
-                    log.setChangeQty(item.getQuantity());
-                    log.setBeforeQty(beforeQty);
-                    log.setAfterQty(inv.getQuantity());
-                    log.setRefOrderNo(order.getOrderNo());
-                    log.setOperatorId(order.getOperatorId());
-                    log.setRemark("销售出库取消，回滚库存");
-                    inventoryLogMapper.insert(log);
-                }
-            }
+            throw new BusinessException("已出库的单据不可取消，请使用作废功能（作废不会影响库存）");
         }
         order.setStatus(OrderStatus.CANCELED);
         salesOrderMapper.updateById(order);

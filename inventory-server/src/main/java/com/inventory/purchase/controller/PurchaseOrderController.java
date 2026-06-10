@@ -31,6 +31,7 @@ public class PurchaseOrderController {
 
     private final PurchaseOrderService purchaseOrderService;
 
+    @SaCheckRole("role_1")
     @Operation(summary = "分页查询采购订单")
     @GetMapping("/page")
     public R<PageResult<PurchaseOrder>> page(
@@ -47,12 +48,14 @@ public class PurchaseOrderController {
         return R.ok(PageResult.of(purchaseOrderService.page(new Page<>(page, size), orderNo, supplierId, warehouseId, minQuantity, maxQuantity, status, startDate, endDate)));
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "获取采购订单详情")
     @GetMapping("/{id}")
     public R<PurchaseOrder> getById(@PathVariable Long id) {
         return R.ok(purchaseOrderService.getDetail(id));
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "新增采购订单")
     @PostMapping
     public R<Long> create(@RequestBody PurchaseOrder order) {
@@ -60,6 +63,7 @@ public class PurchaseOrderController {
         return R.ok(purchaseOrderService.create(order));
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "提交采购订单")
     @PutMapping("/{id}/submit")
     public R<Void> submit(@PathVariable Long id) {
@@ -132,6 +136,7 @@ public class PurchaseOrderController {
         ExcelUtil.export(response, voList, "采购订单列表", PurchaseOrderExportVO.class);
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "更新草稿采购订单")
     @PutMapping("/{id}/draft")
     public R<Void> updateDraft(@PathVariable Long id, @RequestBody PurchaseOrder order) {

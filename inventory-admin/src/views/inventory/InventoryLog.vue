@@ -45,7 +45,7 @@ async function fetchData() {
 
 async function fetchWarehouseTree() {
   try {
-    const res = await request.get('/warehouse/tree')
+    const res = await request.get('/warehouse/tree?stats=false')
     warehouseTree.value = res.data.data || []
   } catch { /* ignore */ }
 }

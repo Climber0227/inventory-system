@@ -4,8 +4,10 @@ import { useRouter } from 'vue-router'
 import request, { downloadFile } from '../../api/request'
 import type { Inventory } from '../../types/api'
 import { ElMessage } from 'element-plus'
+import { useUserStore } from '../../store/user'
 
 const router = useRouter()
+const userStore = useUserStore()
 
 const loading = ref(false)
 const renderKey = ref(0)
@@ -128,13 +130,17 @@ function toggleWarehouseSelect(node: any) {
   }
 }
 
+const PAGE_SIZE_ALL = 999999  // 库存树形视图需全量加载（后端已优化为批量查询）
+
 async function fetchData(showLoading = true) {
   if (showLoading) loading.value = true
   try {
-    const params: Record<string, any> = { page: 1, size: 9999 }
+    const params: Record<string, any> = { page: 1, size: PAGE_SIZE_ALL }
     if (query.value.productName) params.productName = query.value.productName
     const res = await request.get('/inventory/page', { params })
-    allList.value = res.data.data.records || []
+    let records = res.data.data.records || []
+    records.sort((a: any, b: any) => (b.createTime || '').localeCompare(a.createTime || ''))
+    allList.value = records
   } finally { if (showLoading) loading.value = false }
 }
 
@@ -314,12 +320,12 @@ onMounted(() => { fetchWarehouseRoots(); fetchData() })
           <span class="node-stats" v-if="node._pc">
             <span class="stats-badge">{{ node._pc }} 种商品</span>
             <span class="stats-badge">{{ node._qty }} 件</span>
-            <span class="stats-badge amount">¥{{ node._amt.toFixed(2) }}</span>
+            <span v-if="userStore.isAdmin" class="stats-badge amount">¥{{ node._amt.toFixed(2) }}</span>
           </span>
         </div>
         <!-- 叶子节点：库存汇总条 -->
         <div v-if="!node.hasChildren && node._pc" class="leaf-summary">
-          📦 {{ node.name }} · {{ node._pc }} 种商品 · 共 {{ node._qty }} 件 · 金额 ¥{{ node._amt.toFixed(2) }}
+          📦 {{ node.name }} · {{ node._pc }} 种商品 · 共 {{ node._qty }} 件<template v-if="userStore.isAdmin"> · 金额 ¥{{ node._amt.toFixed(2) }}</template>
         </div>
         <!-- 叶子节点：展示库存表格 -->
         <div v-if="!node.hasChildren && node._pc" class="leaf-inventory">
@@ -329,11 +335,14 @@ onMounted(() => { fetchWarehouseRoots(); fetchData() })
             <el-table-column prop="quantity" label="数量" width="70" align="center">
               <template #default="{ row }"><span style="font-weight:600;">{{ row.quantity }}</span></template>
             </el-table-column>
-            <el-table-column label="均价" width="100" align="right">
+            <el-table-column v-if="userStore.isAdmin" label="均价" width="100" align="right">
               <template #default="{ row }">¥{{ (row.costPrice || 0).toFixed(2) }}</template>
             </el-table-column>
-            <el-table-column label="金额" width="100" align="right">
+            <el-table-column v-if="userStore.isAdmin" label="金额" width="100" align="right">
               <template #default="{ row }">¥{{ ((row.costPrice || 0) * (row.quantity || 0)).toFixed(2) }}</template>
+            </el-table-column>
+            <el-table-column label="入库日期" width="110" align="center" sortable prop="createTime">
+              <template #default="{ row }">{{ row.createTime?.substring(0, 16) }}</template>
             </el-table-column>
           </el-table>
         </div>
@@ -341,7 +350,7 @@ onMounted(() => { fetchWarehouseRoots(); fetchData() })
 
       <div class="grand-total" v-if="flatList.length && !selectedWarehouseNode">
         <span class="grand-total-label">📊 全部仓库合计</span>
-        <span>{{ grandTotal.qty }} 件 · 金额 ¥{{ grandTotal.amt.toFixed(2) }}</span>
+        <span>{{ grandTotal.qty }} 件<template v-if="userStore.isAdmin"> · 金额 ¥{{ grandTotal.amt.toFixed(2) }}</template></span>
       </div>
     </div>
   </div>

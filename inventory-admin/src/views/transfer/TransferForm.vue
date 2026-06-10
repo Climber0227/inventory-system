@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, reactive, watch } from 'vue'
+import { ref, onMounted, reactive, watch, computed } from 'vue'
 import request from '../../api/request'
 import type { Product } from '../../types/api'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -13,9 +13,25 @@ const loading = ref(false)
 const submitting = ref(false)
 const warehouseTree = ref<any[]>([])
 const products = ref<Product[]>([])
-const warehouseStock = ref<Record<number, number>>({})
+const whInventory = ref<any[]>([])
 const dirty = ref(false)
 const saved = ref(false)
+const selectedKeys = ref<string[]>([])
+
+// 调出仓库库存明细（按入库批次分行）
+const availableProducts = computed(() => {
+  if (!form.outWarehouseId) return []
+  return whInventory.value
+    .filter((inv: any) => inv.productId && (inv.quantity || 0) > 0)
+    .map((inv: any) => ({
+      productId: inv.productId,
+      productName: inv.productName || '',
+      productCode: inv.productCode || '',
+      qty: inv.quantity || 0,
+      batchNo: inv.batchNo || '',
+      stockDate: inv.createTime?.substring(0, 16) || '',
+    }))
+})
 
 const form = reactive({
   outWarehouseId: undefined as number | undefined,
@@ -25,12 +41,13 @@ const form = reactive({
   items: [] as Array<{
     productId: number | undefined
     productName: string
+    batchNo: string
     quantity: number
   }>,
 })
 
 async function fetchWarehouseTree() {
-  const res = await request.get('/warehouse/tree')
+  const res = await request.get('/warehouse/tree?stats=false')
   warehouseTree.value = res.data.data
 }
 
@@ -41,20 +58,22 @@ async function fetchBaseData() {
 }
 
 function addItem() {
-  form.items.push({
-    productId: undefined,
-    productName: '',
-    quantity: 1,
-  })
+  form.items.push({ productId: undefined, productName: '', batchNo: '', quantity: 1 })
+  selectedKeys.value.push('')
 }
 
 function removeItem(index: number) {
   form.items.splice(index, 1)
+  selectedKeys.value.splice(index, 1)
 }
 
-async function onProductSelect(productId: number, index: number) {
+async function onProductSelect(key: string, index: number) {
   if (index < 0 || index >= form.items.length) return
+  selectedKeys.value[index] = key
+  const parts = key.split('|')
+  const productId = Number(parts[0])
   form.items[index].productId = productId
+  form.items[index].batchNo = parts[1] || ''
   const item = form.items[index]
 
   // 检查是否与其他行重复
@@ -148,8 +167,12 @@ onMounted(async () => {
         form.items = (data.items || []).map((item: any) => ({
           productId: item.productId,
           productName: item.productName || '',
+          batchNo: item.batchNo || '',
           quantity: item.quantity,
         }))
+        // 恢复选中状态
+        selectedKeys.value = form.items.map((item: any) =>
+          item.productId ? (item.productId + '|' + (item.batchNo || '')) : '')
       }
     } catch { /* 非草稿或不存在 */ }
   }
@@ -158,17 +181,12 @@ onMounted(async () => {
 watch(() => form.outWarehouseId, async (whId) => {
   if (whId) {
     try {
-      const res = await request.get('/inventory/page', { params: { warehouseId: whId, page: 1, size: 1000 } })
-      const records = res.data.data.records || []
-      const stock: Record<number, number> = {}
-      for (const r of records) {
-        const pid = r.productId
-        stock[pid] = (stock[pid] || 0) + (r.quantity || 0)
-      }
-      warehouseStock.value = stock
-    } catch { /* ignore */ }
+      const res = await request.get('/inventory/page', { params: { warehouseId: whId, page: 1, size: 9999 } })
+      whInventory.value = (res.data.data.records || []).filter((r: any) => r.quantity > 0)
+      whInventory.value.sort((a: any, b: any) => (b.createTime || '').localeCompare(a.createTime || ''))
+    } catch { whInventory.value = [] }
   } else {
-    warehouseStock.value = {}
+    whInventory.value = []
   }
 })
 </script>
@@ -193,7 +211,6 @@ watch(() => form.outWarehouseId, async (whId) => {
                 <template #default="{ data }">
                   <span>{{ data.name }}</span>
                   <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:6px;">虚拟</el-tag>
-                  <span v-else style="font-size:11px;color:#2e7d32;margin-left:6px;">库存{{ data.productCount || 0 }}</span>
                 </template>
               </el-cascader>
             </el-form-item>
@@ -212,7 +229,6 @@ watch(() => form.outWarehouseId, async (whId) => {
                 <template #default="{ data }">
                   <span>{{ data.name }}</span>
                   <el-tag v-if="data.children?.length" size="small" type="info" effect="plain" style="margin-left:6px;">虚拟</el-tag>
-                  <span v-else style="font-size:11px;color:#2e7d32;margin-left:6px;">库存{{ data.productCount || 0 }}</span>
                 </template>
               </el-cascader>
             </el-form-item>
@@ -241,12 +257,17 @@ watch(() => form.outWarehouseId, async (whId) => {
       <el-table :data="form.items" border stripe>
         <el-table-column label="商品" min-width="140">
           <template #default="{ $index }">
-            <el-select v-model="form.items[$index].productId" filterable placeholder="选择商品" style="width:100%" @change="(val: any) => onProductSelect(val, $index)">
-              <el-option v-for="p in products" :key="p.id" :value="p.id" :label="p.name + ' (' + p.code + ')'">
-                <span style="display:flex;justify-content:space-between;width:100%;">
-                  <span>{{ p.name }} ({{ p.code }})</span>
-                  <span :style="{ color: (warehouseStock[p.id] || 0) > 0 ? '#2e7d32' : '#f56c6c', fontWeight: 'bold' }">
-                    库存: {{ warehouseStock[p.id] ?? '-' }}
+            <el-select :model-value="selectedKeys[$index] || ''"
+              filterable placeholder="请先选择调出仓库" style="width:100%" :disabled="!form.outWarehouseId"
+              @change="(val: any) => onProductSelect(val, $index)">
+              <el-option v-for="p in availableProducts" :key="p.productId + '_' + p.stockDate + '_' + p.batchNo"
+                :value="p.productId + '|' + p.batchNo" :label="p.productName + ' (' + p.productCode + ') ' + p.qty + '件 ' + p.stockDate">
+                <span style="display:flex;justify-content:space-between;width:100%;font-size:13px;">
+                  <span>{{ p.productName }} <span style="color:#999;">({{ p.productCode }})</span></span>
+                  <span style="display:flex;gap:12px;">
+                    <span style="color:#2e7d32;font-weight:600;">{{ p.qty }}件</span>
+                    <span style="color:#666;font-size:11px;">{{ p.stockDate }}</span>
+                    <span v-if="p.batchNo" style="color:#bbb;font-size:11px;">{{ p.batchNo }}</span>
                   </span>
                 </span>
               </el-option>

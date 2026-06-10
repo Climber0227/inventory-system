@@ -107,20 +107,28 @@ public class ReportService {
                         .eq(SalesOrder::getStatus, 1)
                         .ge(SalesOrder::getOrderDate, since));
 
+        // 批量加载所有订单的明细（1 次 SQL 替代 N 次）
+        Set<Long> orderIds = orders.stream().map(SalesOrder::getId).collect(Collectors.toSet());
         Map<Long, Integer> productOutQty = new HashMap<>();
-        for (SalesOrder order : orders) {
-            List<SalesOrderItem> items = salesOrderItemMapper.selectList(
-                    new LambdaQueryWrapper<SalesOrderItem>().eq(SalesOrderItem::getOrderId, order.getId()));
-            for (SalesOrderItem item : items) {
+        if (!orderIds.isEmpty()) {
+            List<SalesOrderItem> allItems = salesOrderItemMapper.selectList(
+                    new LambdaQueryWrapper<SalesOrderItem>().in(SalesOrderItem::getOrderId, orderIds));
+            for (SalesOrderItem item : allItems) {
                 productOutQty.merge(item.getProductId(), item.getQuantity(), Integer::sum);
             }
         }
 
+        // 库存汇总
         List<Inventory> inventoryList = inventoryMapper.selectList(null);
         Map<Long, Integer> productInventory = new HashMap<>();
         for (Inventory inv : inventoryList) {
             productInventory.merge(inv.getProductId(), inv.getQuantity(), Integer::sum);
         }
+
+        // 批量加载商品名称（1 次 SQL 替代 M 次）
+        Map<Long, Product> productMap = productOutQty.isEmpty() ? Map.of()
+                : productMapper.selectBatchIds(productOutQty.keySet()).stream()
+                    .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
 
         for (Map.Entry<Long, Integer> entry : productOutQty.entrySet()) {
             Long pid = entry.getKey();
@@ -129,7 +137,7 @@ public class ReportService {
             if (avgInv == 0) continue;
 
             Map<String, Object> item = new HashMap<>();
-            Product p = productMapper.selectById(pid);
+            Product p = productMap.get(pid);
             item.put("productName", p != null ? p.getName() : "未知");
             item.put("totalOut", outQty);
             item.put("avgInventory", avgInv);

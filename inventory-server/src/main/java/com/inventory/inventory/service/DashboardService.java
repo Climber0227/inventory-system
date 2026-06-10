@@ -48,9 +48,14 @@ public class DashboardService {
         result.put("todaySalesCount", todaySales.size());
         result.put("todaySalesQty", todaySales.stream().mapToInt(SalesOrder::getTotalQuantity).sum());
 
-        long alertCount = inventoryService.getAlertList().size();
+        List<Map<String, Object>> alertList = inventoryService.getAlertList();
+        // 首页只展示前 20 条预警，避免列表过长
+        int alertCount = alertList.size();
+        if (alertList.size() > 20) {
+            alertList = alertList.subList(0, 20);
+        }
         result.put("alertCount", alertCount);
-        result.put("alertList", alertCount > 0 ? inventoryService.getAlertList() : java.util.Collections.emptyList());
+        result.put("alertList", alertList);
         return result;
     }
 }

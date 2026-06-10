@@ -124,23 +124,35 @@ function whDisplay(id) {
 async function loadFromStock(id) {
   stockLoaded.value = false
   fromStock.value = {}
+  whRecords.value = []
   try {
     const res = await request.get('/inventory/page', { params: { warehouseId: id, page: 1, size: 999 } })
+    const records = (res.data.records || []).filter(r => (r.quantity || 0) > 0)
+    records.sort((a, b) => (b.createTime || '').localeCompare(a.createTime || ''))
+    whRecords.value = records
     const stock = {}
-    for (const r of res.data.records || []) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
+    for (const r of records) stock[r.productId] = (stock[r.productId] || 0) + (r.quantity || 0)
     fromStock.value = stock
     stockLoaded.value = true
   } catch { stockLoaded.value = true }
 }
 
+const whRecords = ref([])
+
 const sortedProducts = computed(() => {
-  const withStock = [], without = []
-  for (const p of products.value) {
-    const s = fromStock.value[p.id] || 0
-    ;(s > 0 ? withStock : without).push({ ...p, stock: s })
-  }
-  withStock.sort((a, b) => b.stock - a.stock)
-  return [...withStock, ...without]
+  return whRecords.value
+    .filter(r => r.productId && (r.quantity || 0) > 0)
+    .map(r => {
+      const p = products.value.find(x => x.id === r.productId)
+      return {
+        id: r.productId, name: r.productName || (p ? p.name : ''),
+        code: r.productCode || (p ? p.code : ''), spec: p ? p.spec : '',
+        stock: r.quantity || 0,
+        stockDate: r.createTime?.substring(0, 16) || '',
+        batchNo: r.batchNo || '',
+      }
+    })
+    .sort((a, b) => (b.stockDate || '').localeCompare(a.stockDate || ''))
 })
 
 const filteredProducts = computed(() => {
@@ -155,7 +167,7 @@ function openPicker(idx) { pickerIndex.value = idx; searchKeyword.value = ''; sh
 function selectProduct(p) {
   const item = form.value.items[pickerIndex.value]
   if (!item) return
-  item.productId = p.id; item.productName = p.name; item.spec = p.spec || ''
+  item.productId = p.id; item.productName = p.name; item.spec = p.spec || ''; item.batchNo = p.batchNo || ''
   showPicker.value = false
 }
 
@@ -308,6 +320,7 @@ async function handleSubmit() {
         <text class="section-title">调拨商品</text>
         <text class="add-link" @click="addItem">+ 添加</text>
       </view>
+      <text class="scan-hint">提示：请手动添加商品，或使用右侧 📱 按钮扫条码快速选择</text>
       <view v-for="(item, index) in form.items" :key="index" class="item-card">
         <view class="item-header">
           <text>商品 {{ index + 1 }}</text>
@@ -317,7 +330,7 @@ async function handleSubmit() {
           <view class="picker picker-select" @click="openPicker(index)" style="flex:1;overflow:hidden;">
             {{ item.productName || '选择商品' }}
           </view>
-          <view class="scan-btn" @click="scanCode(index)">📷</view>
+          <view class="scan-btn" @click="scanCode(index)">📱</view>
         </view>
         <view v-if="item.productId" class="selected-info">
           <text>规格: {{ item.spec || '-' }}</text>
@@ -337,16 +350,17 @@ async function handleSubmit() {
           <input v-model="searchKeyword" class="search-input" :class="{ focused: searchFocused }" @focus="searchFocused = true" @blur="searchFocused = false" placeholder="搜索商品名称或编码" focus />
         </view>
         <scroll-view scroll-y class="picker-list">
-          <view v-for="p in filteredProducts" :key="p.id" class="picker-item" @click="selectProduct(p)">
+          <view v-for="p in filteredProducts" :key="p.id + '_' + p.stockDate + '_' + p.batchNo" class="picker-item" @click="selectProduct(p)">
             <view style="flex:1;overflow:hidden;">
               <view style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ p.name }}</view>
-              <text style="font-size:11px;color:#999;">
-                {{ p.code }} | {{ p.spec || '-' }}
-                <text class="stock-text" :class="{ 'has-stock': (fromStock[p.id] || 0) > 0 }"> | 库存 {{ fromStock[p.id] ?? '-' }}</text>
+              <text style="font-size:11px;color:#999;">{{ p.code }} | {{ p.spec || '-' }}</text>
+              <text style="font-size:11px;color:#666;display:block;">
+                {{ p.stock }}件 · {{ p.stockDate }}
+                <text v-if="p.batchNo" style="color:#bbb;"> · {{ p.batchNo }}</text>
               </text>
             </view>
           </view>
-          <view v-if="filteredProducts.length === 0" style="text-align:center;padding:20px;color:#999;">无匹配商品</view>
+          <view v-if="filteredProducts.length === 0" style="text-align:center;padding:20px;color:#999;">该仓库暂无可用库存</view>
         </scroll-view>
       </view>
     </view>
@@ -378,6 +392,7 @@ async function handleSubmit() {
 .input-sm { border: 1px solid #dcdfe6; border-radius: 4px; padding: 10px 12px; }
 .ic-row { display: flex; align-items: center; gap: 8px; }
 .scan-btn { width: 40px; height: 40px; background: #e8f5e9; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0; }
+.scan-hint { display: block; font-size: 11px; color: #999; margin-bottom: 8px; }
 .picker-select:active { background: #e8f5e9; }
 .btn-draft { flex:1; background:#fff; color:#666; border:1px solid #dcdfe6; border-radius:8px; height:44px; line-height:44px; font-size:15px; }
 .btn-submit { flex:1; background: #2e7d32; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 15px; }

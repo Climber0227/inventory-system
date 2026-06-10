@@ -2,9 +2,12 @@ package com.inventory.product.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import cn.dev33.satoken.annotation.SaCheckRole;
+import com.inventory.common.annotation.RepeatSubmit;
 import com.inventory.common.result.PageResult;
 import com.inventory.common.result.R;
 import com.inventory.common.util.ExcelUtil;
+import com.inventory.common.util.ImportResult;
+import com.inventory.product.service.ProductImportListener;
 import com.inventory.product.entity.Product;
 import com.inventory.product.entity.ProductExportVO;
 import com.inventory.product.entity.ProductImportVO;
@@ -100,26 +103,48 @@ public class ProductController {
     }
 
     @SaCheckRole("role_1")
+    @RepeatSubmit(interval = 5000)
     @Operation(summary = "导入商品")
     @PostMapping("/import")
-    public R<String> importExcel(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+    public R<java.util.Map<String, Object>> importExcel(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) {
+        ProductImportListener listener = new ProductImportListener(productService);
         try {
-            List<ProductImportVO> rows = com.alibaba.excel.EasyExcel.read(file.getInputStream())
-                    .head(ProductImportVO.class).sheet().doReadSync();
-            int count = productService.importExcel(rows);
-            return R.ok("导入成功，共创建 " + count + " 个商品");
+            com.alibaba.excel.EasyExcel.read(file.getInputStream(), ProductImportVO.class, listener)
+                    .sheet().doRead();
         } catch (Exception e) {
             throw new com.inventory.common.exception.BusinessException("导入失败: " + e.getMessage());
         }
+        ImportResult r = listener.getResult();
+        java.util.Map<String, Object> map = new java.util.HashMap<>();
+        map.put("success", r.getSuccess());
+        map.put("failure", r.getFailure());
+        map.put("total", r.getTotal());
+        map.put("summary", r.getSummary());
+        map.put("errors", r.getErrors());
+        return R.ok(map);
     }
 
-    @Operation(summary = "导出为导入格式")
+    @SaCheckRole("role_1")
+    @Operation(summary = "导出为导入格式（支持筛选）")
     @GetMapping("/export-for-import")
-    public void exportForImport(HttpServletResponse response) {
-        List<ProductImportVO> voList = productService.getImportVOs();
+    public void exportForImport(HttpServletResponse response,
+                                @RequestParam(required = false) String ids,
+                                @RequestParam(required = false) String name,
+                                @RequestParam(required = false) String code,
+                                @RequestParam(required = false) Integer status,
+                                @RequestParam(required = false) Long warehouseId,
+                                @RequestParam(required = false) Long categoryId) {
+        List<Product> list = productService.listFiltered(name, code, status, null, warehouseId, categoryId,
+                null, null, null, null, null, null);
+        if (ids != null && !ids.isEmpty()) {
+            List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
+            list = list.stream().filter(p -> idList.contains(p.getId())).collect(Collectors.toList());
+        }
+        List<ProductImportVO> voList = productService.getImportVOs(list);
         ExcelUtil.export(response, voList, "商品导入格式", ProductImportVO.class);
     }
 
+    @SaCheckRole("role_1")
     @Operation(summary = "导出商品（支持筛选条件）")
     @GetMapping("/export")
     public void export(HttpServletResponse response,

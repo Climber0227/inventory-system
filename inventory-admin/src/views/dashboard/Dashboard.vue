@@ -240,6 +240,10 @@ onMounted(async () => {
             </el-table-column>
             <el-table-column prop="minStock" label="安全库存" width="70" align="center" />
           </el-table>
+          <div v-if="stats.alertCount > alertList.length" style="text-align:center;padding:8px;color:#999;font-size:12px;">
+            仅显示前 20 条，共 {{ stats.alertCount }} 条预警
+            <el-button text size="small" type="primary" @click="router.push('/inventory')">查看全部</el-button>
+          </div>
         </div>
         <div v-else style="color:#999;text-align:center;padding:20px;font-size:13px;">暂无预警</div>
       </div>

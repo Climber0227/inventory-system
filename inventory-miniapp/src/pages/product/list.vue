@@ -3,6 +3,9 @@ import { ref, onMounted } from 'vue'
 import { onPullDownRefresh } from '@dcloudio/uni-app'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
+import { useUserStore } from '@/store/user'
+
+const userStore = useUserStore()
 
 const list = ref([])
 const loading = ref(false)
@@ -78,7 +81,7 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
     </view>
     <view v-if="showSort" class="sort-panel">
       <view class="sort-row" @click="setSort('stock', 'desc')">库存 <text :class="{ active: activeSort === 'stock' && activeSortDir === 'desc' }">↓</text><text :class="{ active: activeSort === 'stock' && activeSortDir === 'asc' }">↑</text></view>
-      <view class="sort-row" @click="setSort('purchase', 'desc')">采购价 <text :class="{ active: activeSort === 'purchase' && activeSortDir === 'desc' }">↓</text><text :class="{ active: activeSort === 'purchase' && activeSortDir === 'asc' }">↑</text></view>
+      <view v-if="userStore.isAdmin" class="sort-row" @click="setSort('purchase', 'desc')">采购价 <text :class="{ active: activeSort === 'purchase' && activeSortDir === 'desc' }">↓</text><text :class="{ active: activeSort === 'purchase' && activeSortDir === 'asc' }">↑</text></view>
       <view class="sort-row" @click="setSort('sale', 'desc')">销售价 <text :class="{ active: activeSort === 'sale' && activeSortDir === 'desc' }">↓</text><text :class="{ active: activeSort === 'sale' && activeSortDir === 'asc' }">↑</text></view>
     </view>
     <view style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap;">
@@ -102,7 +105,7 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
             <text>编码: {{ item.code }} | 规格: {{ item.spec || '-' }}</text>
             <text>分类: {{ item.categoryName || '-' }} | 单位: {{ item.unit }}</text>
             <view style="display:flex;justify-content:space-between;padding-top:4px;border-top:1px solid #f0f4f0;margin-top:4px;">
-              <text style="font-size:12px;">采购 ¥{{ item.purchasePrice ?? '-' }}</text>
+              <text v-if="userStore.isAdmin" style="font-size:12px;">采购 ¥{{ item.purchasePrice ?? '-' }}</text>
               <text style="font-size:12px;">销售 ¥{{ item.salePrice ?? '-' }}</text>
               <text style="font-weight:600;color:#2e7d32;">库存 {{ item.inventoryQuantity ?? 0 }}</text>
             </view>
@@ -113,6 +116,7 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
         <view v-if="list.length === 0 && !loading" class="empty">暂无商品</view>
       </view>
     </scroll-view>
+    <view v-if="userStore.isAdmin" class="fab-add" @click="uni.navigateTo({ url: '/pages/product/detail' })">+</view>
     <FloatingHome />
   </view>
 </template>
@@ -135,4 +139,5 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
 .sort-row text.active { color:#2e7d32; font-weight:700; }
 .st-pill { background: #f5f5f5; border-radius: 8px; padding: 4px 10px; font-size: 12px; color: #666; }
 .st-pill.on { background: #e8f5e9; color: #2e7d32; font-weight: 600; }
+.fab-add { position: fixed; right: 24px; bottom: 160px; width: 48px; height: 48px; background: #2e7d32; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 28px; box-shadow: 0 4px 12px rgba(46,125,50,0.4); z-index: 100; }
 </style>

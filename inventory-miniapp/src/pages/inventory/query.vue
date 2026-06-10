@@ -2,6 +2,9 @@
 import { ref, reactive, computed } from 'vue'
 import { onShow, onPullDownRefresh } from '@dcloudio/uni-app'
 import request from '@/api/request'
+import { useUserStore } from '@/store/user'
+
+const userStore = useUserStore()
 
 const loading = ref(false)
 const warehouseTree = ref([])
@@ -134,7 +137,9 @@ async function fetchData() {
     const kw = keyword.value.trim()
     if (kw) params.productName = kw
     const res = await request.get('/inventory/page', { params })
-    allList.value = res.data.records || []
+    let records = res.data.records || []
+    records.sort((a, b) => (b.createTime || '').localeCompare(a.createTime || ''))
+    allList.value = records
     if (kw) searched.value = true
   } catch (e) {
     allList.value = []
@@ -252,13 +257,16 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
               <!-- 批次已禁用 -->
             </view>
             <text>仓码: {{ inv.warehouseCode || '-' }}</text>
-            <text>均价 ¥{{ (inv.costPrice || 0).toFixed(2) }}</text>
-            <text>¥{{ ((inv.costPrice || 0) * (inv.quantity || 0)).toFixed(2) }}</text>
+            <template v-if="userStore.isAdmin">
+              <text>均价 ¥{{ (inv.costPrice || 0).toFixed(2) }}</text>
+              <text>¥{{ ((inv.costPrice || 0) * (inv.quantity || 0)).toFixed(2) }}</text>
+            </template>
+            <text style="font-size:11px;color:#bbb;">{{ inv.createTime?.substring(0, 16) || '-' }}</text>
           </view>
         </view>
       </view>
       <view v-if="!searchResults.length && !loading" class="empty">未找到匹配商品</view>
-      <view v-if="searchResults.length" class="grand-total">总计 {{ grandTotal.qty }} 件 · ¥{{ grandTotal.amt.toFixed(2) }}</view>
+      <view v-if="searchResults.length" class="grand-total">总计 {{ grandTotal.qty }} 件<template v-if="userStore.isAdmin"> · ¥{{ grandTotal.amt.toFixed(2) }}</template></view>
     </view>
     <view v-else class="tree-wrap">
       <!-- 树形模式 -->
@@ -289,8 +297,11 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
               <view class="inv-footer">
                 <!-- 批次已禁用 -->
                 <text>仓码: {{ inv.warehouseCode || '-' }}</text>
-                <text>均价 ¥{{ (inv.costPrice || 0).toFixed(2) }}</text>
-                <text>¥{{ ((inv.costPrice || 0) * (inv.quantity || 0)).toFixed(2) }}</text>
+                <template v-if="userStore.isAdmin">
+                  <text>均价 ¥{{ (inv.costPrice || 0).toFixed(2) }}</text>
+                  <text>¥{{ ((inv.costPrice || 0) * (inv.quantity || 0)).toFixed(2) }}</text>
+                </template>
+                <text style="font-size:11px;color:#bbb;">{{ inv.createTime?.substring(0, 16) || '-' }}</text>
               </view>
             </view>
           </view>

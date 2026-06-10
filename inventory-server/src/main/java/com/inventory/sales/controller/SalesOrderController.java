@@ -106,10 +106,17 @@ public class SalesOrderController {
     @Operation(summary = "导出销售订单")
     @GetMapping("/export")
     public void export(HttpServletResponse response,
-                       @RequestParam(required = false) String ids) {
-        List<SalesOrder> allList = salesOrderService.listAll().stream()
-                .filter(o -> o.getStatus() != null && o.getStatus() != 3)
-                .collect(Collectors.toList());
+                       @RequestParam(required = false) String ids,
+                       @RequestParam(required = false) String orderNo,
+                       @RequestParam(required = false) Long customerId,
+                       @RequestParam(required = false) Long warehouseId,
+                       @RequestParam(required = false) Integer status,
+                       @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
+                       @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate endDate) {
+        List<SalesOrder> allList = salesOrderService.page(
+                new com.baomidou.mybatisplus.extension.plugins.pagination.Page<>(1, 99999),
+                orderNo, customerId, warehouseId, null, null, null, null, null, status, startDate, endDate)
+                .getRecords();
         if (ids != null && !ids.isEmpty()) {
             List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
             allList = allList.stream().filter(o -> idList.contains(o.getId())).collect(Collectors.toList());

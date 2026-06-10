@@ -75,6 +75,11 @@ export const useAppStore = defineStore('app', () => {
       icon: 'DataAnalysis',
     },
     {
+      path: '/pending',
+      title: '待审批',
+      icon: 'AlarmClock',
+    },
+    {
       path: '/system',
       title: '系统管理',
       icon: 'Setting',

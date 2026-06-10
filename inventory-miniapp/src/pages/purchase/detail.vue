@@ -3,6 +3,9 @@ import { ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
+import { useUserStore } from '@/store/user'
+
+const userStore = useUserStore()
 
 const order = ref(null)
 const loading = ref(false)
@@ -12,6 +15,11 @@ const statusMap = { 0: '草稿', 1: '已入库', 2: '已取消', 4: '待审批' 
 let id = null
 
 onLoad(async (options) => {
+  // 非管理员跳转首页
+  if (!userStore.isAdmin) {
+    uni.redirectTo({ url: '/pages/home/home' })
+    return
+  }
   if (options?.id) {
     id = options.id
   } else if (options?.orderNo) {
@@ -48,6 +56,36 @@ async function cancelOrder() {
       try {
         await request.put(`/purchase-order/${id}/cancel`)
         uni.showToast({ title: '已取消', icon: 'success' })
+        fetchDetail()
+      } finally { actionLoading.value = false }
+    },
+  })
+}
+
+async function approveOrder() {
+  uni.showModal({
+    title: '审核确认', content: '确定审核通过此入库单？通过后将更新库存。',
+    success: async (r) => {
+      if (!r.confirm) return
+      actionLoading.value = true
+      try {
+        await request.put(`/purchase-order/${id}/approve`)
+        uni.showToast({ title: '审核通过', icon: 'success' })
+        fetchDetail()
+      } finally { actionLoading.value = false }
+    },
+  })
+}
+
+async function rejectOrder() {
+  uni.showModal({
+    title: '驳回原因', editable: true, placeholderText: '请输入驳回原因',
+    success: async (r) => {
+      if (!r.confirm) return
+      actionLoading.value = true
+      try {
+        await request.put(`/purchase-order/${id}/reject`, { reason: r.content || '' })
+        uni.showToast({ title: '已驳回', icon: 'success' })
         fetchDetail()
       } finally { actionLoading.value = false }
     },
@@ -141,6 +179,8 @@ async function cancelOrder() {
       <button v-if="order?.status === 0" class="btn-pri" :loading="actionLoading" @click="submitOrder">提交入库</button>
       <button v-if="order?.status === 0" class="btn-edit" :loading="actionLoading" @click="uni.navigateTo({ url: '/pages/purchase/create?id=' + order.id })">编辑</button>
       <button v-if="order?.status === 0" class="btn-sec" :loading="actionLoading" @click="cancelOrder">取消</button>
+      <button v-if="order?.status === 4" class="btn-pri" :loading="actionLoading" @click="approveOrder">审核通过</button>
+      <button v-if="order?.status === 4" class="btn-sec" style="color:#c62828;border-color:#ffcdd2;" :loading="actionLoading" @click="rejectOrder">驳回</button>
     </view>
     <FloatingHome />
   </view>

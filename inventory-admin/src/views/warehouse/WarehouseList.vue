@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
 import request, { downloadFile } from '../../api/request'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage, ElMessageBox, ElLoading } from 'element-plus'
 import { useUserStore } from '../../store/user'
 
 const userStore = useUserStore()
@@ -78,18 +78,11 @@ function openCreate(parent?: any) {
   Object.assign(form, { id: undefined, name: '', code: '', contact: '', phone: '', address: '', status: 1, remark: '' })
   if (parent) {
     const childLevel = (parent.level || 1) + 1
-    if (childLevel <= 4) {
-      form.level = childLevel
-      form.parentId = parent.id
-      loadParentCandidates(childLevel)
-      dialogVisible.value = true
-      return
-    } else {
-      ElMessage.warning('已达到最大层级')
-      return
-    }
+    if (childLevel > 4) { ElMessage.warning('已达到最大层级4级'); return }
+    form.level = childLevel
+    form.parentId = parent.id
   } else {
-    form.level = 4
+    form.level = 1
     form.parentId = undefined
   }
   parentCandidates.value = []
@@ -144,11 +137,22 @@ async function onFileChange(e: Event) {
   if (!files?.length) return
   const formData = new FormData()
   formData.append('file', files[0])
+  const loading = ElLoading.service({ fullscreen: true, text: '正在导入仓库，请稍候...' })
   try {
     const res = await request.post('/warehouse/import', formData)
-    ElMessage.success(res.data.message)
+    loading.close()
+    const data = res.data.data
+    if (data.failure > 0) {
+      await ElMessageBox.alert(data.summary.replace(/\n/g, '<br/>'), '导入完成（有失败）', {
+        dangerouslyUseHTMLString: true, type: 'warning', confirmButtonText: '知道了',
+      })
+    } else {
+      ElMessage.success(`导入成功！共 ${data.total} 条`)
+    }
     fetchTree()
-  } catch { /* handled */ }
+  } catch {
+    loading.close()
+  }
   (e.target as HTMLInputElement).value = ''
 }
 
@@ -229,23 +233,25 @@ onMounted(fetchTree)
       <el-form :model="form" label-width="90px">
         <el-form-item label="仓库名称" required><el-input v-model="form.name" placeholder="如：一号仓库、门店仓库" /></el-form-item>
         <el-form-item label="仓库编码"><span style="color:#999;line-height:32px;">{{ form.code || '自动生成' }}</span></el-form-item>
-        <el-form-item label="仓库地址" :required="form.level === 4"><el-input v-model="form.address" :placeholder="form.level === 4 ? 'XX市XX区XX路XX号' : '虚拟节点无需地址'" /></el-form-item>
-        <el-form-item label="层级" required>
-          <el-select v-model="form.level" placeholder="选择层级" @change="onLevelChange">
-            <el-option label="1级" :value="1" />
-            <el-option label="2级" :value="2" />
-            <el-option label="3级" :value="3" />
-            <el-option label="4级" :value="4" />
-          </el-select>
+        <el-form-item label="仓库地址" :required="form.level === 4"><el-input v-model="form.address" :placeholder="form.level === 4 ? 'XX市XX区XX路XX号' : '选填'" /></el-form-item>
+        <el-form-item v-if="form.id" label="层级" required>
+          <span style="line-height:32px;color:#666;">{{ form.level }}级</span>
         </el-form-item>
-        <el-form-item label="上级仓库" v-if="form.level && form.level > 1">
+        <el-form-item v-else label="层级">
+          <span style="line-height:32px;color:#2e7d32;">{{ form.level }}级{{ form.parentId ? '' : '（根节点）' }}</span>
+          <span v-if="!form.parentId" style="color:#999;font-size:12px;margin-left:8px;">子级仓库请在列表中点击「+ 新增子级」创建</span>
+        </el-form-item>
+        <el-form-item v-if="form.level > 1 && !form.id" label="上级仓库">
+          <span style="line-height:32px;color:#666;">已自动关联</span>
+        </el-form-item>
+        <el-form-item v-if="form.id && form.level > 1" label="上级仓库">
           <el-select v-model="form.parentId" placeholder="选择上级" filterable>
             <el-option v-for="w in parentCandidates" :key="w.id" :label="w.name" :value="w.id" />
           </el-select>
         </el-form-item>
-        <el-row :gutter="16" v-if="form.level === 4">
-          <el-col :span="12"><el-form-item label="负责人" required><el-input v-model="form.contact" /></el-form-item></el-col>
-          <el-col :span="12"><el-form-item label="联系电话" required><el-input v-model="form.phone" /></el-form-item></el-col>
+        <el-row :gutter="16">
+          <el-col :span="12"><el-form-item label="负责人" :required="form.level === 4"><el-input v-model="form.contact" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="联系电话" :required="form.level === 4"><el-input v-model="form.phone" /></el-form-item></el-col>
         </el-row>
         <el-form-item label="备注"><el-input v-model="form.remark" type="textarea" :rows="2" placeholder="如：常温仓、冷冻仓" /></el-form-item>
       </el-form>

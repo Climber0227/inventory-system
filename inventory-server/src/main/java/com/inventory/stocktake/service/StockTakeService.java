@@ -25,9 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.Date;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -72,13 +70,8 @@ public class StockTakeService {
                 .ne(StockTake::getStatus, OrderStatus.VOIDED)
                 .orderByDesc(StockTake::getId);
         Page<StockTake> result = stockTakeMapper.selectPage(page, wrapper);
+        enrichStockTakesBatch(result.getRecords());
 
-        // Enrich warehouse name, operator name, approver name
-        for (StockTake t : result.getRecords()) {
-            enrichStockTake(t);
-        }
-
-        // Filter by operator name in memory
         if (operatorName != null && !operatorName.isEmpty()) {
             List<StockTake> filtered = result.getRecords().stream()
                     .filter(t -> t.getOperatorName() != null && t.getOperatorName().contains(operatorName))
@@ -86,8 +79,6 @@ public class StockTakeService {
             result.setRecords(filtered);
             result.setTotal(filtered.size());
         }
-
-        // Filter by approver name in memory
         if (approverName != null && !approverName.isEmpty()) {
             List<StockTake> filtered = result.getRecords().stream()
                     .filter(t -> t.getApproverName() != null && t.getApproverName().contains(approverName))
@@ -95,20 +86,16 @@ public class StockTakeService {
             result.setRecords(filtered);
             result.setTotal(filtered.size());
         }
-
         return result;
     }
 
     public List<StockTakeDetailExportVO> getExportDetailList(List<StockTake> stocktakes) {
+        // 批量预加载所有关联数据
+        enrichStockTakesBatch(stocktakes);
         List<StockTakeDetailExportVO> result = new ArrayList<>();
         for (StockTake s : stocktakes) {
-            List<StockTakeItem> items = stockTakeItemMapper.selectList(
-                    new LambdaQueryWrapper<StockTakeItem>().eq(StockTakeItem::getStockTakeId, s.getId()));
+            List<StockTakeItem> items = s.getItems() != null ? s.getItems() : List.of();
             for (StockTakeItem item : items) {
-                if (item.getProductId() != null) {
-                    Product p = productMapper.selectById(item.getProductId());
-                    if (p != null) { item.setProductName(p.getName()); item.setProductCode(p.getCode()); }
-                }
                 StockTakeDetailExportVO vo = new StockTakeDetailExportVO();
                 vo.setOrderNo(s.getOrderNo());
                 vo.setWarehouseName(s.getWarehouseName());
@@ -146,24 +133,56 @@ public class StockTakeService {
         return result;
     }
 
-    private void enrichStockTake(StockTake t) {
-        if (t.getWarehouseId() != null) {
-            Warehouse w = warehouseMapper.selectById(t.getWarehouseId());
+    private void enrichStockTakesBatch(List<StockTake> list) {
+        if (list == null || list.isEmpty()) return;
+        Set<Long> stockTakeIds = new HashSet<>();
+        Set<Long> warehouseIds = new HashSet<>();
+        Set<Long> userIds = new HashSet<>();
+        for (StockTake t : list) {
+            stockTakeIds.add(t.getId());
+            if (t.getWarehouseId() != null) warehouseIds.add(t.getWarehouseId());
+            if (t.getOperatorId() != null) userIds.add(t.getOperatorId());
+            if (t.getApproverId() != null) userIds.add(t.getApproverId());
+        }
+        // 批量加载明细
+        List<StockTakeItem> allItems = stockTakeIds.isEmpty() ? List.of()
+                : stockTakeItemMapper.selectList(
+                    new LambdaQueryWrapper<StockTakeItem>().in(StockTakeItem::getStockTakeId, stockTakeIds));
+        Map<Long, List<StockTakeItem>> itemMap = allItems.stream()
+                .collect(Collectors.groupingBy(StockTakeItem::getStockTakeId));
+        Set<Long> productIds = allItems.stream().map(StockTakeItem::getProductId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        // 批量加载关联实体
+        Map<Long, Warehouse> warehouseMap = warehouseIds.isEmpty() ? new HashMap<>()
+                : warehouseMapper.selectBatchIds(warehouseIds).stream()
+                    .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        Map<Long, SysUser> userMap = userIds.isEmpty() ? new HashMap<>()
+                : sysUserMapper.selectBatchIds(userIds).stream()
+                    .collect(Collectors.toMap(SysUser::getId, u -> u, (a, b) -> a));
+        Map<Long, Product> productMap = productIds.isEmpty() ? new HashMap<>()
+                : productMapper.selectBatchIds(productIds).stream()
+                    .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
+        // 纯内存组装
+        for (StockTake t : list) {
+            Warehouse w = warehouseMap.get(t.getWarehouseId());
             if (w != null) t.setWarehouseName(w.getName());
-        }
-        if (t.getOperatorId() != null) {
-            SysUser u = sysUserMapper.selectById(t.getOperatorId());
-            if (u != null) t.setOperatorName(u.getRealName());
-        }
-        if (t.getApproverId() != null) {
-            SysUser u = sysUserMapper.selectById(t.getApproverId());
-            if (u != null) t.setApproverName(u.getRealName());
+            SysUser op = userMap.get(t.getOperatorId());
+            if (op != null) t.setOperatorName(op.getRealName());
+            SysUser ap = userMap.get(t.getApproverId());
+            if (ap != null) t.setApproverName(ap.getRealName());
+            List<StockTakeItem> items = itemMap.getOrDefault(t.getId(), List.of());
+            for (StockTakeItem item : items) {
+                Product p = productMap.get(item.getProductId());
+                if (p != null) { item.setProductName(p.getName()); item.setProductCode(p.getCode()); }
+            }
+            t.setItems(items);
         }
     }
 
     public List<StockTake> listAll() {
-        List<StockTake> list = stockTakeMapper.selectList(new LambdaQueryWrapper<StockTake>().orderByDesc(StockTake::getId));
-        for (StockTake t : list) enrichStockTake(t);
+        List<StockTake> list = stockTakeMapper.selectList(
+                new LambdaQueryWrapper<StockTake>().orderByDesc(StockTake::getId));
+        enrichStockTakesBatch(list);
         return list;
     }
 
@@ -173,18 +192,8 @@ public class StockTakeService {
             List<StockTakeItem> items = stockTakeItemMapper.selectList(
                     new LambdaQueryWrapper<StockTakeItem>()
                             .eq(StockTakeItem::getStockTakeId, id));
-            // 填充商品名称和编码
-            for (StockTakeItem item : items) {
-                if (item.getProductId() != null) {
-                    Product p = productMapper.selectById(item.getProductId());
-                    if (p != null) {
-                        item.setProductName(p.getName());
-                        item.setProductCode(p.getCode());
-                    }
-                }
-            }
             stockTake.setItems(items);
-            enrichStockTake(stockTake);
+            enrichStockTakesBatch(List.of(stockTake));
         }
         return stockTake;
     }
@@ -200,7 +209,7 @@ public class StockTakeService {
         stockTake.setDiffItems(0);
         stockTakeMapper.insert(stockTake);
 
-        // 全盘：自动加载该仓库所有商品作为盘点项
+        // 全盘：自动加载该仓库所有库存批次，每个批次独立一行
         if (stockTake.getTakeType() != null && stockTake.getTakeType() == 0) {
             List<Inventory> invList = inventoryMapper.selectList(
                     new LambdaQueryWrapper<Inventory>()
@@ -235,12 +244,22 @@ public class StockTakeService {
             throw new BusinessException("当前状态不可添加盘点项");
         }
 
-        // Get current book quantity from inventory in the same warehouse
-        List<Inventory> invList = inventoryMapper.selectList(
-                new LambdaQueryWrapper<Inventory>()
-                        .eq(Inventory::getProductId, item.getProductId())
-                        .eq(Inventory::getWarehouseId, stockTake.getWarehouseId()));
-        int bookQty = invList.stream().mapToInt(Inventory::getQuantity).sum();
+        // 按批次获取账面数量
+        int bookQty;
+        if (item.getBatchNo() != null && !item.getBatchNo().isEmpty()) {
+            Inventory inv = inventoryMapper.selectOne(
+                    new LambdaQueryWrapper<Inventory>()
+                            .eq(Inventory::getProductId, item.getProductId())
+                            .eq(Inventory::getWarehouseId, stockTake.getWarehouseId())
+                            .eq(Inventory::getBatchNo, item.getBatchNo()));
+            bookQty = inv != null ? inv.getQuantity() : 0;
+        } else {
+            List<Inventory> invList = inventoryMapper.selectList(
+                    new LambdaQueryWrapper<Inventory>()
+                            .eq(Inventory::getProductId, item.getProductId())
+                            .eq(Inventory::getWarehouseId, stockTake.getWarehouseId()));
+            bookQty = invList.stream().mapToInt(Inventory::getQuantity).sum();
+        }
         item.setBookQty(bookQty);
         int actualQty = item.getActualQty() != null ? item.getActualQty() : bookQty;
         item.setActualQty(actualQty);
@@ -289,65 +308,56 @@ public class StockTakeService {
                 continue;
             }
 
-            // 查询该商品在对应仓库中的所有库存记录，按批次汇总
-            List<Inventory> invList = inventoryMapper.selectList(
-                    new LambdaQueryWrapper<Inventory>()
-                            .eq(Inventory::getProductId, item.getProductId())
-                            .eq(Inventory::getWarehouseId, stockTake.getWarehouseId()));
+            // 使用审批时保存的差异值
+            int diff = item.getDiffQty();
+            if (diff == 0) continue;
 
-            int totalQty = invList.stream().mapToInt(Inventory::getQuantity).sum();
-            int diff = item.getActualQty() - totalQty;
+            // 定位该批次对应的库存行
+            Inventory target = null;
+            if (item.getBatchNo() != null && !item.getBatchNo().isEmpty()) {
+                target = inventoryMapper.selectOne(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, stockTake.getWarehouseId())
+                                .eq(Inventory::getBatchNo, item.getBatchNo()));
+            }
+            if (target == null) {
+                // 未匹配到批次，取该商品第一个库存行
+                List<Inventory> list = inventoryMapper.selectList(
+                        new LambdaQueryWrapper<Inventory>()
+                                .eq(Inventory::getProductId, item.getProductId())
+                                .eq(Inventory::getWarehouseId, stockTake.getWarehouseId())
+                                .last("LIMIT 1"));
+                target = list.isEmpty() ? null : list.get(0);
+            }
+            int beforeQty = target != null ? target.getQuantity() : 0;
+            int afterQty = beforeQty + diff;
 
-            if (diff != 0) {
-                InventoryLog log = new InventoryLog();
-                log.setProductId(item.getProductId());
-                log.setWarehouseId(stockTake.getWarehouseId());
-                log.setChangeType(OrderStatus.STOCKTAKE_ADJUST);
-                log.setChangeQty(diff);
-                log.setBeforeQty(totalQty);
-                log.setAfterQty(item.getActualQty());
-                log.setRefOrderNo(stockTake.getOrderNo());
-                log.setOperatorId(stockTake.getOperatorId());
-                log.setRemark(item.getDiffReason() != null ? item.getDiffReason() : "盘点调整");
-                inventoryLogMapper.insert(log);
+            if (target != null) {
+                target.setQuantity(afterQty);
+                if (target.getQuantity() < 0) target.setQuantity(0);
+                inventoryMapper.updateById(target);
+            } else if (diff > 0) {
+                Inventory newInv = new Inventory();
+                newInv.setProductId(item.getProductId());
+                newInv.setWarehouseId(stockTake.getWarehouseId());
+                newInv.setQuantity(diff);
+                newInv.setLockedQty(0);
+                inventoryMapper.insert(newInv);
             }
 
-            // 更新库存：差异增量，新增则创建批次，减少则从各批次依次扣减
-            if (!invList.isEmpty()) {
-                if (diff > 0) {
-                    // 库存增加：创建新批次记录增量
-                    Inventory newInv = new Inventory();
-                    newInv.setProductId(item.getProductId());
-                    newInv.setWarehouseId(stockTake.getWarehouseId());
-                    newInv.setQuantity(diff);
-                    newInv.setBatchNo("PD-" + stockTake.getOrderNo());
-                    if (!invList.isEmpty()) {
-                        newInv.setCostPrice(invList.get(0).getCostPrice());
-                    }
-                    inventoryMapper.insert(newInv);
-                } else if (diff < 0) {
-                    // 库存减少：从各批次依次扣减
-                    int toRemove = -diff;
-                    for (Inventory inv : invList) {
-                        int reduce = Math.min(toRemove, inv.getQuantity());
-                        toRemove -= reduce;
-                        inv.setQuantity(inv.getQuantity() - reduce);
-                        inventoryMapper.updateById(inv);
-                        if (toRemove == 0) break;
-                    }
-                    if (toRemove > 0) {
-                        throw new BusinessException("库存不足，无法完成调整");
-                    }
-                }
-                // diff == 0 已经在上面 continue 了，不会到这里
-            } else {
-                Inventory inv = new Inventory();
-                inv.setProductId(item.getProductId());
-                inv.setWarehouseId(stockTake.getWarehouseId());
-                inv.setQuantity(item.getActualQty());
-                inv.setLockedQty(0);
-                inventoryMapper.insert(inv);
-            }
+            InventoryLog log = new InventoryLog();
+            log.setProductId(item.getProductId());
+            log.setWarehouseId(stockTake.getWarehouseId());
+            log.setBatchNo(item.getBatchNo());
+            log.setChangeType(OrderStatus.STOCKTAKE_ADJUST);
+            log.setChangeQty(diff);
+            log.setBeforeQty(beforeQty);
+            log.setAfterQty(Math.max(0, afterQty));
+            log.setRefOrderNo(stockTake.getOrderNo());
+            log.setOperatorId(stockTake.getOperatorId());
+            log.setRemark(item.getDiffReason() != null ? item.getDiffReason() : "盘点调整");
+            inventoryLogMapper.insert(log);
         }
 
         stockTake.setStatus(OrderStatus.STOCKTAKE_ADJUSTED);

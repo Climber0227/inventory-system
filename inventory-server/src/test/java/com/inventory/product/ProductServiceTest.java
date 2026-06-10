@@ -14,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.apache.ibatis.session.SqlSessionFactory;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -30,13 +31,15 @@ class ProductServiceTest {
     @Mock private SalesOrderItemMapper salesOrderItemMapper;
     @Mock private InventoryTransferItemMapper transferItemMapper;
     @Mock private StockTakeItemMapper stockTakeItemMapper;
+    @Mock private SqlSessionFactory sqlSessionFactory;
 
     private ProductService service;
 
     @BeforeEach
     void setUp() {
         service = new ProductService(productMapper, inventoryMapper, categoryMapper,
-                purchaseOrderItemMapper, salesOrderItemMapper, transferItemMapper, stockTakeItemMapper);
+                purchaseOrderItemMapper, salesOrderItemMapper, transferItemMapper, stockTakeItemMapper,
+                sqlSessionFactory);
     }
 
     @Test
