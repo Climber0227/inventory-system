@@ -52,6 +52,7 @@ public class InventoryService {
 
     public Page<Inventory> page(Page<Inventory> page, Long productId, String productName, Long warehouseId) {
         LambdaQueryWrapper<Inventory> wrapper = new LambdaQueryWrapper<Inventory>()
+                .gt(Inventory::getQuantity, 0)
                 .eq(productId != null, Inventory::getProductId, productId)
                 .eq(warehouseId != null, Inventory::getWarehouseId, warehouseId)
                 .orderByDesc(Inventory::getCreateTime);

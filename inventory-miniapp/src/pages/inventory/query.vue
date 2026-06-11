@@ -253,9 +253,11 @@ onPullDownRefresh(() => { fetchData(); uni.stopPullDownRefresh() })
           <view class="inv-path">{{ inv._path }}</view>
           <view class="inv-row">
             <view class="inv-info">
-              <text class="inv-qty" :class="{ low: (inv.quantity || 0) <= 5 }">{{ inv.quantity }}</text>
-              <!-- 批次已禁用 -->
+              <text class="inv-name">{{ inv.productName || group.productName }}</text>
             </view>
+            <text class="inv-qty" :class="{ low: (inv.quantity || 0) <= 5 }">{{ inv.quantity }}</text>
+          </view>
+          <view class="inv-footer">
             <text>仓码: {{ inv.warehouseCode || '-' }}</text>
             <template v-if="userStore.isAdmin">
               <text>均价 ¥{{ (inv.costPrice || 0).toFixed(2) }}</text>

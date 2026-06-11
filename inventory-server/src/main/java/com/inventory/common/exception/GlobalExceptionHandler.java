@@ -10,6 +10,7 @@ import org.springframework.validation.BindException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 @RestControllerAdvice
@@ -63,6 +64,15 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MissingServletRequestParameterException.class)
     public R<Void> handleMissingParam(MissingServletRequestParameterException e) {
         return R.fail("缺少必填参数: " + e.getParameterName());
+    }
+
+    @ExceptionHandler(DuplicateKeyException.class)
+    public R<Void> handleDuplicateKey(DuplicateKeyException e) {
+        String msg = e.getMessage() != null ? e.getMessage() : "";
+        if (msg.contains("batch_no")) {
+            return R.fail("批次号冲突：同一商品同一仓库的入库批次重复，请刷新后重新审核");
+        }
+        return R.fail("数据重复，请检查后重试");
     }
 
     @ExceptionHandler(Exception.class)

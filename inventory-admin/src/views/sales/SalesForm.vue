@@ -198,10 +198,10 @@ watch(() => form.warehouseId, async (whId) => {
         const pid = r.productId
         stock[pid] = (stock[pid] || 0) + (r.quantity || 0)
       }
-      productStock.value = stock
+      warehouseStock.value = stock
     } catch { /* ignore */ }
   } else {
-    productStock.value = {}
+    warehouseStock.value = {}
   }
 })
 

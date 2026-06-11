@@ -2,7 +2,7 @@
 const config = {
   // 开发环境: 使用电脑局域网 IP
   // 生产环境: 使用正式域名 https://your-domain.com
-  BASE_URL: 'http://localhost:8080/api/v1',
+  BASE_URL: 'http://10.103.54.214:8888/api/v1',
 }
 
 export default config

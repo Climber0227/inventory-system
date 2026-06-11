@@ -180,11 +180,18 @@ function removeItem(index) { form.value.items.splice(index, 1) }
 function scanCode(index) {
   uni.scanCode({
     success: (res) => {
-      const p = products.value.find(x => x.code === res.result)
-      if (!p) { uni.showToast({ title: '未找到该商品', icon: 'none' }); return }
+      let match = whRecords.value.find(r => r.productCode === res.result || null)
+      if (!match) {
+        const p = products.value.find(x => x.code === res.result)
+        match = whRecords.value.find(r => r.productId === (p ? p.id : null))
+      }
+      if (!match) { uni.showToast({ title: '调出仓库无此商品库存', icon: 'none' }); return }
       const item = form.value.items[index]
       if (!item) return
-      item.productId = p.id; item.productName = p.name; item.spec = p.spec || ''
+      item.productId = match.productId; item.productName = match.productName
+      item.batchNo = match.batchNo || ''
+      const p = products.value.find(x => x.id === match.productId)
+      if (p) item.spec = p.spec || ''
     },
   })
 }

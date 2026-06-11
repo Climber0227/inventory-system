@@ -1,5 +1,6 @@
 <script setup>
 import { ref } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { useUserStore } from '@/store/user'
 
 const userStore = useUserStore()
@@ -7,6 +8,15 @@ const username = ref('')
 const password = ref('')
 const loading = ref(false)
 const focusField = ref('')
+
+// 进入登录页时，检查本地是否有有效 token，有则直接跳首页（免登录）
+onLoad(() => {
+  const token = uni.getStorageSync('token')
+  if (token) {
+    userStore.token = token
+    uni.switchTab({ url: '/pages/home/home' })
+  }
+})
 
 async function handleLogin() {
   if (!username.value || !password.value) {

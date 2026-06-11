@@ -267,11 +267,11 @@ onMounted(async () => { fetchCategories(); fetchData() })
         <el-button type="primary" @click="openCreate" v-if="userStore.isAdmin">新增商品</el-button>
         <el-button @click="handleImport" v-if="userStore.isAdmin">导入Excel</el-button>
         <el-button @click="downloadFile('/product/import/template', '商品导入模板.xlsx')">下载模板</el-button>
-        <el-tooltip content="表头与导入模板一致，修改后可直接导入" placement="top">
-          <el-button @click="downloadFile('/product/export-for-import', '商品数据(可回导).xlsx')">导出规范Excel</el-button>
+        <el-tooltip content="导出后可修改内容，再通过「导入Excel」重新导回系统。用于批量修改商品信息" placement="top">
+          <el-button type="warning" @click="downloadFile('/product/export-for-import', '商品数据(可回导).xlsx')">📥 导出可回导Excel</el-button>
         </el-tooltip>
-        <el-tooltip content="包含库存数量、预警状态等详细信息" placement="top">
-          <el-button @click="handleExport">导出Excel</el-button>
+        <el-tooltip content="⚠ 仅用于查看或打印，不能导回系统！如需批量修改请用左侧按钮" placement="top">
+          <el-button @click="handleExport">📄 导出数据Excel</el-button>
         </el-tooltip>
         <input ref="fileInput" type="file" accept=".xlsx,.xls" hidden @change="onFileChange" />
       </div>

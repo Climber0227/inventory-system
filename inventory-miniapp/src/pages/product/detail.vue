@@ -1,14 +1,14 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
-import request from '@/api/request'
+import request, { BASE_URL } from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
 import { useUserStore } from '@/store/user'
 
 const userStore = useUserStore()
 
-// 图片基础路径，从 API 请求地址提取（去掉 /api/v1）
-const API_HOST = 'http://192.168.10.162:8080'
+// 图片基础路径 = API 地址去掉 /api/v1（即服务器根路径）
+const API_HOST = BASE_URL.replace(/\/api\/v1\/?$/, '')
 function imgUrl(path) {
   if (!path) return ''
   if (path.startsWith('http')) return path

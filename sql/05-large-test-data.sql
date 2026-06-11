@@ -290,17 +290,14 @@ INSERT INTO `warehouse` (`id`, `code`, `name`, `level`, `parent_id`, `contact`, 
 (1, 'WH001', '华东仓储中心', 1, NULL, NULL, NULL, NULL, 1),
 (2, 'WH002', '上海分区', 2, 1, NULL, NULL, NULL, 1),
 (3, 'WH003', '杭州分区', 2, 1, NULL, NULL, NULL, 1),
-(4, 'WH004', '浦东主仓', 3, 2, '张主管', '13810000001', '上海市浦东新区临港仓储园A区', 1),
-(5, 'WH005', '松江分仓', 3, 2, '李主管', '13810000002', '上海市松江区新桥镇仓储路88号', 1),
-(6, 'WH006', '杭州总仓', 3, 3, '王主管', '13810000003', '杭州市余杭区仓前街道物流园', 1),
-(7, 'WH007', '浦东-A区电子仓', 4, 4, '赵仓管', '13820000001', '浦东新区临港仓储园A区1号楼', 1),
-(8, 'WH008', '浦东-B区百货仓', 4, 4, '钱仓管', '13820000002', '浦东新区临港仓储园A区2号楼', 1),
-(9, 'WH009', '浦东-C区大件仓', 4, 4, '孙仓管', '13820000003', '浦东新区临港仓储园A区3号楼', 1),
-(10, 'WH010', '松江-A区日用品仓', 4, 5, '李仓管', '13820000004', '松江区新桥镇仓储路88号A栋', 1),
-(11, 'WH011', '松江-B区五金仓', 4, 5, '周仓管', '13820000005', '松江区新桥镇仓储路88号B栋', 1),
-(12, 'WH012', '杭州-A区电子配件仓', 4, 6, '吴仓管', '13820000006', '余杭区仓前街道物流园A区', 1),
-(13, 'WH013', '杭州-B区办公用品仓', 4, 6, '郑仓管', '13820000007', '余杭区仓前街道物流园B区', 1),
-(14, 'WH014', '杭州-C区耗材仓', 4, 6, '王仓管', '13820000008', '余杭区仓前街道物流园C区', 1);
+(7, 'WH007', '浦东-A区电子仓', 4, 2, '赵仓管', '13820000001', '浦东新区临港仓储园A区1号楼', 1),
+(8, 'WH008', '浦东-B区百货仓', 4, 2, '钱仓管', '13820000002', '浦东新区临港仓储园A区2号楼', 1),
+(9, 'WH009', '浦东-C区大件仓', 4, 2, '孙仓管', '13820000003', '浦东新区临港仓储园A区3号楼', 1),
+(10, 'WH010', '松江-A区日用品仓', 4, 2, '李仓管', '13820000004', '松江区新桥镇仓储路88号A栋', 1),
+(11, 'WH011', '松江-B区五金仓', 4, 2, '周仓管', '13820000005', '松江区新桥镇仓储路88号B栋', 1),
+(12, 'WH012', '杭州-A区电子配件仓', 4, 3, '吴仓管', '13820000006', '余杭区仓前街道物流园A区', 1),
+(13, 'WH013', '杭州-B区办公用品仓', 4, 3, '郑仓管', '13820000007', '余杭区仓前街道物流园B区', 1),
+(14, 'WH014', '杭州-C区耗材仓', 4, 3, '王仓管', '13820000008', '余杭区仓前街道物流园C区', 1);
 
 -- =====================================================
 -- 6. 库位（30 个，分布在 3 个叶子仓库）
@@ -6018,3 +6015,75 @@ SELECT '  库存记录: 520+ 条' AS '';
 SELECT '  库存流水: 2050+ 条' AS '';
 SELECT '' AS '';
 SELECT '审批流测试：用 buyer1/seller1/keeper1 创建并提交，切 admin 或 manager1 审核' AS '测试指引';
+
+-- =====================================================
+-- 数据重分配：将3级仓库(4,5,6)的数据转移到4级仓库
+-- 设计原则：3级仓库为虚拟节点，不存放实际库存
+-- =====================================================
+
+-- 库存：浦东主仓(4) → 浦东A(7)/B(8)/C(9)
+UPDATE inventory SET warehouse_id = 7 WHERE warehouse_id = 4 AND product_id % 3 = 0;
+UPDATE inventory SET warehouse_id = 8 WHERE warehouse_id = 4 AND product_id % 3 = 1;
+UPDATE inventory SET warehouse_id = 9 WHERE warehouse_id = 4 AND product_id % 3 = 2;
+
+-- 库存：松江分仓(5) → 松江A(10)/B(11)
+UPDATE inventory SET warehouse_id = 10 WHERE warehouse_id = 5 AND product_id % 2 = 0;
+UPDATE inventory SET warehouse_id = 11 WHERE warehouse_id = 5 AND product_id % 2 = 1;
+
+-- 库存：杭州总仓(6) → 杭州A(12)/B(13)/C(14)
+UPDATE inventory SET warehouse_id = 12 WHERE warehouse_id = 6 AND product_id % 3 = 0;
+UPDATE inventory SET warehouse_id = 13 WHERE warehouse_id = 6 AND product_id % 3 = 1;
+UPDATE inventory SET warehouse_id = 14 WHERE warehouse_id = 6 AND product_id % 3 = 2;
+
+-- 采购单
+UPDATE purchase_order SET warehouse_id = 7 WHERE warehouse_id = 4 AND id % 3 = 0;
+UPDATE purchase_order SET warehouse_id = 8 WHERE warehouse_id = 4 AND id % 3 = 1;
+UPDATE purchase_order SET warehouse_id = 9 WHERE warehouse_id = 4 AND id % 3 = 2;
+UPDATE purchase_order SET warehouse_id = 10 WHERE warehouse_id = 5 AND id % 2 = 0;
+UPDATE purchase_order SET warehouse_id = 11 WHERE warehouse_id = 5 AND id % 2 = 1;
+UPDATE purchase_order SET warehouse_id = 12 WHERE warehouse_id = 6 AND id % 3 = 0;
+UPDATE purchase_order SET warehouse_id = 13 WHERE warehouse_id = 6 AND id % 3 = 1;
+UPDATE purchase_order SET warehouse_id = 14 WHERE warehouse_id = 6 AND id % 3 = 2;
+
+-- 销售单
+UPDATE sales_order SET warehouse_id = 7 WHERE warehouse_id = 4 AND id % 3 = 0;
+UPDATE sales_order SET warehouse_id = 8 WHERE warehouse_id = 4 AND id % 3 = 1;
+UPDATE sales_order SET warehouse_id = 9 WHERE warehouse_id = 4 AND id % 3 = 2;
+UPDATE sales_order SET warehouse_id = 10 WHERE warehouse_id = 5 AND id % 2 = 0;
+UPDATE sales_order SET warehouse_id = 11 WHERE warehouse_id = 5 AND id % 2 = 1;
+UPDATE sales_order SET warehouse_id = 12 WHERE warehouse_id = 6 AND id % 3 = 0;
+UPDATE sales_order SET warehouse_id = 13 WHERE warehouse_id = 6 AND id % 3 = 1;
+UPDATE sales_order SET warehouse_id = 14 WHERE warehouse_id = 6 AND id % 3 = 2;
+
+-- 调拨单
+UPDATE inventory_transfer SET from_warehouse_id = 7 WHERE from_warehouse_id = 4 AND id % 3 = 0;
+UPDATE inventory_transfer SET from_warehouse_id = 8 WHERE from_warehouse_id = 4 AND id % 3 = 1;
+UPDATE inventory_transfer SET from_warehouse_id = 9 WHERE from_warehouse_id = 4 AND id % 3 = 2;
+UPDATE inventory_transfer SET to_warehouse_id = 7 WHERE to_warehouse_id = 4 AND id % 3 = 0;
+UPDATE inventory_transfer SET to_warehouse_id = 8 WHERE to_warehouse_id = 4 AND id % 3 = 1;
+UPDATE inventory_transfer SET to_warehouse_id = 9 WHERE to_warehouse_id = 4 AND id % 3 = 2;
+UPDATE inventory_transfer SET from_warehouse_id = 10 WHERE from_warehouse_id = 5 AND id % 2 = 0;
+UPDATE inventory_transfer SET from_warehouse_id = 11 WHERE from_warehouse_id = 5 AND id % 2 = 1;
+UPDATE inventory_transfer SET to_warehouse_id = 10 WHERE to_warehouse_id = 5 AND id % 2 = 0;
+UPDATE inventory_transfer SET to_warehouse_id = 11 WHERE to_warehouse_id = 5 AND id % 2 = 1;
+UPDATE inventory_transfer SET from_warehouse_id = 12 WHERE from_warehouse_id = 6 AND id % 3 = 0;
+UPDATE inventory_transfer SET from_warehouse_id = 13 WHERE from_warehouse_id = 6 AND id % 3 = 1;
+UPDATE inventory_transfer SET from_warehouse_id = 14 WHERE from_warehouse_id = 6 AND id % 3 = 2;
+UPDATE inventory_transfer SET to_warehouse_id = 12 WHERE to_warehouse_id = 6 AND id % 3 = 0;
+UPDATE inventory_transfer SET to_warehouse_id = 13 WHERE to_warehouse_id = 6 AND id % 3 = 1;
+UPDATE inventory_transfer SET to_warehouse_id = 14 WHERE to_warehouse_id = 6 AND id % 3 = 2;
+
+-- 盘点单
+UPDATE stock_take SET warehouse_id = 7 WHERE warehouse_id = 4;
+UPDATE stock_take SET warehouse_id = 10 WHERE warehouse_id = 5;
+UPDATE stock_take SET warehouse_id = 12 WHERE warehouse_id = 6;
+
+-- 库存流水
+UPDATE inventory_log SET warehouse_id = 7 WHERE warehouse_id = 4 AND product_id % 3 = 0;
+UPDATE inventory_log SET warehouse_id = 8 WHERE warehouse_id = 4 AND product_id % 3 = 1;
+UPDATE inventory_log SET warehouse_id = 9 WHERE warehouse_id = 4 AND product_id % 3 = 2;
+UPDATE inventory_log SET warehouse_id = 10 WHERE warehouse_id = 5 AND product_id % 2 = 0;
+UPDATE inventory_log SET warehouse_id = 11 WHERE warehouse_id = 5 AND product_id % 2 = 1;
+UPDATE inventory_log SET warehouse_id = 12 WHERE warehouse_id = 6 AND product_id % 3 = 0;
+UPDATE inventory_log SET warehouse_id = 13 WHERE warehouse_id = 6 AND product_id % 3 = 1;
+UPDATE inventory_log SET warehouse_id = 14 WHERE warehouse_id = 6 AND product_id % 3 = 2;

@@ -84,8 +84,10 @@ public class ProductService {
         LocalDateTime endDateTime = (endDate != null && !endDate.isEmpty()) ? LocalDate.parse(endDate).atTime(LocalTime.MAX) : null;
         boolean admin = isAdmin();
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<Product>()
-                .like(name != null, Product::getName, name)
-                .like(code != null, Product::getCode, code)
+                .and(name != null || code != null, w -> w
+                        .like(name != null, Product::getName, name)
+                        .or()
+                        .like(code != null, Product::getCode, code))
                 .eq(status != null, Product::getStatus, status)
                 .eq(categoryId != null, Product::getCategoryId, categoryId)
                 .ge(admin && minPrice != null, Product::getPurchasePrice, minPrice)
@@ -156,8 +158,10 @@ public class ProductService {
         LocalDateTime endDateTime = (endDate != null && !endDate.isEmpty()) ? LocalDate.parse(endDate).atTime(LocalTime.MAX) : null;
         boolean admin = isAdmin();
         LambdaQueryWrapper<Product> wrapper = new LambdaQueryWrapper<Product>()
-                .like(name != null, Product::getName, name)
-                .like(code != null, Product::getCode, code)
+                .and(name != null || code != null, w -> w
+                        .like(name != null, Product::getName, name)
+                        .or()
+                        .like(code != null, Product::getCode, code))
                 .eq(status != null, Product::getStatus, status)
                 .eq(categoryId != null, Product::getCategoryId, categoryId)
                 .ge(admin && minPrice != null, Product::getPurchasePrice, minPrice)
