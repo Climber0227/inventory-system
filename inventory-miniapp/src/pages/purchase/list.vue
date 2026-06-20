@@ -229,7 +229,10 @@ onPullDownRefresh(() => { fetchList(); uni.stopPullDownRefresh() })
         <view class="card-body">
           <view style="display:flex;justify-content:space-between;">
             <text>{{ item.supplierName || '-' }}</text>
-            <text>{{ item.warehouseName || '-' }}</text>
+            <view>
+              <text>{{ item.warehouseName || '-' }}</text>
+              <text v-if="item.warehousePath" style="font-size:10px;color:#bbb;display:block;">{{ item.warehousePath }}</text>
+            </view>
           </view>
           <view style="display:flex;justify-content:space-between;color:#888;">
             <text>数量: {{ item.totalQuantity }}</text>

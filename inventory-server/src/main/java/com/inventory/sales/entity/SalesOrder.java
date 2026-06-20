@@ -39,6 +39,9 @@ public class SalesOrder {
     private String warehouseName;
 
     @TableField(exist = false)
+    private String warehousePath;
+
+    @TableField(exist = false)
     private String operatorName;
 
     @TableField(exist = false)

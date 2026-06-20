@@ -83,7 +83,10 @@ async function saveItem(item) {
         <text class="dh-st" :class="'dh-' + order.status">{{ statusMap[order.status] || '未知' }}</text>
       </view>
       <view class="info-grid">
-        <view class="ig-row"><text class="ig-l">仓库</text><text class="ig-v">{{ order.warehouseName || '-' }}</text></view>
+        <view class="ig-row">
+          <text class="ig-l">仓库</text>
+          <view class="v-right"><text class="ig-v">{{ order.warehouseName || '-' }}</text><text v-if="order.warehousePath" class="path">{{ order.warehousePath }}</text></view>
+        </view>
         <view class="ig-row"><text class="ig-l">盘点方式</text><text class="ig-v">{{ order.takeType === 0 ? '全盘' : '抽盘' }}</text></view>
         <view class="ig-row"><text class="ig-l">盘点日期</text><text class="ig-v">{{ order.orderDate || '-' }}</text></view>
         <view class="ig-row"><text class="ig-l">商品数</text><text class="ig-v">{{ order.totalItems }}</text></view>
@@ -143,6 +146,7 @@ async function saveItem(item) {
 .ig-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
 .ig-row:last-child { border-bottom: none; }
 .ig-l { color: #999; } .ig-v { font-weight: 500; color: #333; }
+.v-right { text-align: right; } .path { display: block; font-size: 10px; color: #bbb; margin-top: 2px; }
 .action-bar { margin-top: 16px; padding-bottom: 32px; }
 .btn-approve { width: 100%; background: #2e7d32; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 16px; }
 .btn-adjust { width: 100%; background: #1565c0; color: #fff; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 16px; }

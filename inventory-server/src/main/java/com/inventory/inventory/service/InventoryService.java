@@ -115,10 +115,10 @@ public class InventoryService {
         }
         // 批量查询（2 次 SQL 替代 2N 次）
         Map<Long, Product> productMap = productIds.isEmpty() ? Collections.emptyMap()
-                : productMapper.selectBatchIds(productIds).stream()
+                : productMapper.selectBatchIdsIgnoreDeleted(productIds).stream()
                     .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
         Map<Long, Warehouse> warehouseMap = warehouseIds.isEmpty() ? Collections.emptyMap()
-                : warehouseMapper.selectBatchIds(warehouseIds).stream()
+                : warehouseMapper.selectBatchIdsIgnoreDeleted(warehouseIds).stream()
                     .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
         // 纯内存赋值
         for (Inventory inv : list) {
@@ -143,9 +143,12 @@ public class InventoryService {
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         Set<Long> warehouseIds = all.stream().map(Inventory::getWarehouseId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
-        Map<Long, Product> productMap = productMapper.selectBatchIds(productIds).stream()
+        Map<Long, Product> productMap = productMapper.selectBatchIdsIgnoreDeleted(productIds).stream()
                 .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
-        Map<Long, Warehouse> warehouseMap = warehouseMapper.selectBatchIds(warehouseIds).stream()
+        Map<Long, Warehouse> warehouseMap = warehouseMapper.selectBatchIdsIgnoreDeleted(warehouseIds).stream()
+                .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        // 加载所有仓库用于构建父级路径
+        Map<Long, Warehouse> allWhMap = warehouseMapper.selectList(null).stream()
                 .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
         // 纯内存过滤+组装
         List<Map<String, Object>> alerts = new ArrayList<>();
@@ -159,9 +162,23 @@ public class InventoryService {
                 item.put("quantity", inv.getQuantity());
                 item.put("minStock", p.getMinStock());
                 item.put("warehouseName", w != null ? w.getName() : "");
+                item.put("warehousePath", w != null ? buildWhPath(w, allWhMap) : "");
                 alerts.add(item);
             }
         }
         return alerts;
+    }
+
+    private String buildWhPath(Warehouse wh, Map<Long, Warehouse> allMap) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        Long cur = wh.getId();
+        java.util.Set<Long> visited = new java.util.HashSet<>();
+        while (cur != null && allMap.containsKey(cur) && visited.add(cur)) {
+            Warehouse w = allMap.get(cur);
+            parts.add(0, w.getName());
+            cur = w.getParentId();
+        }
+        if (parts.size() > 1) parts.remove(parts.size() - 1);
+        return parts.isEmpty() ? "" : String.join(" / ", parts);
     }
 }

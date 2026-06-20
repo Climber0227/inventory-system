@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import request, { BASE_URL } from '@/api/request'
 import FloatingHome from '@/components/FloatingHome'
@@ -22,6 +22,30 @@ const categories = ref([])
 const flatCategories = ref([])
 const uploading = ref(false)
 
+// 多图解析：兼容旧单图和新 JSON 数组格式
+function parseImages(imageUrl) {
+  if (!imageUrl) return []
+  if (imageUrl.startsWith('[')) { try { return JSON.parse(imageUrl) } catch { return [] } }
+  return [imageUrl]
+}
+function serializeImages(images) {
+  return images.length ? JSON.stringify(images) : ''
+}
+const imageList = ref([])
+// 图片加载骨架：'loading' | 'loaded' | 'error'
+const imgStatus = reactive({})
+const editImgStatus = reactive({})
+function onImgLoad(i) { imgStatus[i] = 'loaded' }
+function onImgError(i) { imgStatus[i] = 'error' }
+function onEditImgLoad(i) { editImgStatus[i] = 'loaded' }
+function onEditImgError(i) { editImgStatus[i] = 'error' }
+function resetImgStatus(count) {
+  for (let i = 0; i < count; i++) { imgStatus[i] = 'loading' }
+}
+function resetEditImgStatus(count) {
+  for (let i = 0; i < count; i++) { editImgStatus[i] = 'loading' }
+}
+
 function flattenTree(list, result = []) {
   for (const item of list) { result.push(item); if (item.children?.length) flattenTree(item.children, result) }
   return result
@@ -32,6 +56,11 @@ const form = ref({
   purchasePrice: null, salePrice: null,
   minStock: 0, maxStock: 0, remark: '', imageUrl: '',
 })
+
+function resetForm() {
+  form.value = { name: '', spec: '', unit: '', categoryId: null, purchasePrice: null, salePrice: null, minStock: 0, maxStock: 0, remark: '', imageUrl: '' }
+  imageList.value = []
+}
 
 let id = null
 const isCreate = ref(false)
@@ -51,6 +80,7 @@ onLoad(async (options) => {
     isCreate.value = true
     product.value = { status: 1 }
     editing.value = true
+    resetForm()
   }
 })
 
@@ -60,6 +90,8 @@ async function fetchDetail() {
   try {
     const pRes = await request.get(`/product/${id}`)
     product.value = pRes.data
+    resetImgStatus(parseImages(pRes.data.imageUrl).length)
+    resetEditImgStatus(parseImages(pRes.data.imageUrl).length)
     Object.assign(form.value, {
       name: pRes.data.name, spec: pRes.data.spec || '', unit: pRes.data.unit || '',
       categoryId: pRes.data.categoryId,
@@ -67,17 +99,19 @@ async function fetchDetail() {
       minStock: pRes.data.minStock || 0, maxStock: pRes.data.maxStock || 0,
       remark: pRes.data.remark || '', imageUrl: pRes.data.imageUrl || '',
     })
+    imageList.value = parseImages(pRes.data.imageUrl)
   } finally { loading.value = false }
 }
 
 function chooseImage() {
+  const remain = 5 - imageList.value.length
+  if (remain <= 0) { uni.showToast({ title: '最多上传5张图片', icon: 'none' }); return }
   uni.chooseImage({
-    count: 1,
+    count: remain,
     sizeType: ['compressed'],
     sourceType: ['album', 'camera'],
     success: (res) => {
-      const filePath = res.tempFilePaths[0]
-      uploadImage(filePath)
+      res.tempFilePaths.forEach(fp => uploadImage(fp))
     },
   })
 }
@@ -94,7 +128,7 @@ async function uploadImage(filePath) {
     })
     const data = JSON.parse(res.data)
     if (data.code === 200) {
-      form.value.imageUrl = data.data
+      imageList.value.push(data.data)
       uni.showToast({ title: '上传成功', icon: 'success' })
     } else {
       uni.showToast({ title: data.message || '上传失败', icon: 'none' })
@@ -104,8 +138,13 @@ async function uploadImage(filePath) {
   } finally { uploading.value = false }
 }
 
+function removeImage(index) {
+  imageList.value.splice(index, 1)
+}
+
 async function handleSave() {
   if (!form.value.name) { uni.showToast({ title: '商品名称不能为空', icon: 'none' }); return }
+  form.value.imageUrl = serializeImages(imageList.value)
   loading.value = true
   try {
     if (isCreate.value) {
@@ -141,11 +180,14 @@ function toggleEdit() {
           <text class="dh-name">新建商品</text>
         </template>
         <template v-else>
-          <view class="img-wrap">
-            <image v-if="product.imageUrl" :src="imgUrl(product.imageUrl)" mode="widthFix" class="product-img" @click="uni.previewImage({urls:[imgUrl(product.imageUrl)]})" @error="product.imageUrl = ''" />
-            <view v-else class="img-placeholder" style="width:120px;height:120px;display:flex;align-items:center;justify-content:center;background:#f5f5f5;border-radius:8px;margin:0 auto 12px;">
-              <text style="font-size:32px;color:#ccc;">📷</text>
+          <view v-if="parseImages(product.imageUrl).length" class="img-grid">
+            <view v-for="(img, i) in parseImages(product.imageUrl)" :key="i" class="img-wrap">
+              <view v-if="imgStatus[i] !== 'loaded'" class="img-skeleton"><text class="skeleton-text">{{ imgStatus[i] === 'error' ? '加载失败' : '图片' }}</text></view>
+              <image :src="imgUrl(img)" mode="aspectFill" class="img-thumb" :class="{ 'img-hide': imgStatus[i] !== 'loaded' }" @load="onImgLoad(i)" @error="onImgError(i)" @click="uni.previewImage({urls: parseImages(product.imageUrl).map(u => imgUrl(u)), current: i})" />
             </view>
+          </view>
+          <view v-else class="img-placeholder">
+            <text class="placeholder-text">暂无图片</text>
           </view>
           <text class="dh-name">{{ product.name }}</text>
           <text class="dh-code">{{ product.code }}</text>
@@ -171,15 +213,19 @@ function toggleEdit() {
       <view class="section" v-if="editing">
         <!-- 图片上传 -->
         <view class="form-item">
-          <text class="label">商品图片</text>
-          <view class="upload-area" @click="chooseImage">
-            <image v-if="form.imageUrl" :src="imgUrl(form.imageUrl)" mode="aspectFit" class="upload-preview" />
-            <view v-else class="upload-trigger">
-              <text style="font-size:24px;">+</text>
-              <text style="font-size:11px;color:#999;margin-top:4px;">拍照或相册</text>
+          <text class="label">商品图片（最多5张）</text>
+          <view class="img-grid-edit">
+            <view v-for="(img, i) in imageList" :key="i" class="img-item">
+              <view v-if="editImgStatus[i] !== 'loaded'" class="img-skeleton img-edit-skeleton"><text class="skeleton-text">{{ editImgStatus[i] === 'error' ? '加载失败' : '图片' }}</text></view>
+              <image :src="imgUrl(img)" mode="aspectFill" class="img-thumb-edit" :class="{ 'img-hide': editImgStatus[i] !== 'loaded' }" @load="onEditImgLoad(i)" @error="onEditImgError(i)" />
+              <view class="img-del" @click="removeImage(i)">×</view>
             </view>
-            <text v-if="uploading" class="upload-mask">上传中...</text>
+            <view v-if="imageList.length < 5" class="img-add" @click="chooseImage">
+              <text style="font-size:24px;color:#999;">+</text>
+              <text style="font-size:11px;color:#999;">添加</text>
+            </view>
           </view>
+          <text v-if="uploading" style="font-size:12px;color:#2e7d32;margin-top:4px;">上传中...</text>
         </view>
         <view class="form-item">
           <text class="label">名称 *</text>
@@ -238,9 +284,8 @@ function toggleEdit() {
 <style scoped>
 .page { padding: 12px; background: #f5f7f5; min-height: 100vh; }
 .detail-header { background: #fff; border-radius: 8px; padding: 20px 16px; text-align: center; margin-bottom: 10px; }
-.img-wrap { width: 120px; height: 120px; margin: 0 auto 12px; border-radius: 8px; overflow: hidden; }
-.img-placeholder { background: #f5f5f5; display: flex; align-items: center; justify-content: center; }
-.product-img { width: 100%; height: 100%; }
+.img-placeholder { width:120px;height:120px;background:#f5f5f5;border-radius:8px;margin:0 auto 12px;display:flex;align-items:center;justify-content:center; }
+.placeholder-text { font-size: 13px; color: #bbb; }
 .dh-name { font-size: 18px; font-weight: 700; display: block; }
 .dh-code { font-size: 12px; color: #999; margin-top: 4px; display: block; }
 .dh-tags { display: flex; justify-content: center; gap: 6px; margin-top: 8px; }
@@ -263,6 +308,24 @@ function toggleEdit() {
 .upload-trigger { width: 100px; height: 100px; border: 1.5px dashed #dcdfe6; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fafafa; }
 .upload-preview { width: 100px; height: 100px; border-radius: 8px; }
 .upload-mask { position: absolute; inset: 0; background: rgba(0,0,0,0.4); color: #fff; display: flex; align-items: center; justify-content: center; border-radius: 8px; font-size: 12px; }
+
+/* 多图网格 - 查看模式 */
+.img-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.img-wrap { position: relative; width: 80px; height: 80px; }
+.img-thumb { width: 80px; height: 80px; border-radius: 6px; }
+.img-hide { position: absolute; opacity: 0; pointer-events: none; }
+
+/* 多图网格 - 编辑模式 */
+.img-grid-edit { display: flex; flex-wrap: wrap; gap: 8px; }
+.img-item { position: relative; width: 80px; height: 80px; }
+.img-edit-skeleton { position: absolute; left: 0; top: 0; }
+.img-thumb-edit { width: 80px; height: 80px; border-radius: 6px; }
+
+/* 图片骨架屏 */
+.img-skeleton { width: 80px; height: 80px; border-radius: 6px; background: #f0f0f0; display: flex; align-items: center; justify-content: center; }
+.skeleton-text { font-size: 12px; color: #ccc; }
+.img-del { position: absolute; top: -6px; right: -6px; width: 20px; height: 20px; background: #f56c6c; color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; }
+.img-add { width: 80px; height: 80px; border: 1.5px dashed #dcdfe6; border-radius: 6px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #fafafa; }
 
 .action-btn { width: 100%; border: none; border-radius: 8px; height: 44px; line-height: 44px; font-size: 16px; text-align: center; margin-top: 8px; }
 .btn-edit { background: #2e7d32; color: #fff; }

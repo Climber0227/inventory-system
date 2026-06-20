@@ -21,6 +21,7 @@ import java.net.URLEncoder;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -98,7 +99,7 @@ public class StockTakeController {
     @Operation(summary = "导出盘点单")
     @GetMapping("/export")
     public void export(HttpServletResponse response,
-                       @RequestParam(required = false) String ids) {
+                       @RequestParam(required = false) String ids) throws IOException {
         List<StockTake> list = stockTakeService.listAll().stream()
                 .filter(s -> s.getStatus() != null && s.getStatus() != 3)
                 .collect(Collectors.toList());
@@ -106,22 +107,57 @@ public class StockTakeController {
             List<Long> idList = Arrays.stream(ids.split(",")).map(Long::parseLong).collect(Collectors.toList());
             list = list.stream().filter(s -> idList.contains(s.getId())).collect(Collectors.toList());
         }
-        // 按盘点单分组导出，每个单据一个 sheet
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("utf-8");
-        try {
-            String fileName = URLEncoder.encode("盘点明细", "UTF-8").replaceAll("\\+", "%20");
-            response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
-            var excelWriter = EasyExcel.write(response.getOutputStream(), StockTakeDetailExportVO.class).build();
-            for (StockTake s : list) {
-                List<StockTakeDetailExportVO> sheetData = stockTakeService.getExportDetailList(List.of(s));
-                WriteSheet writeSheet = EasyExcel.writerSheet(s.getOrderNo()).build();
-                excelWriter.write(sheetData, writeSheet);
-            }
-            excelWriter.finish();
-        } catch (IOException e) {
-            throw new RuntimeException("导出失败", e);
+        String fileName = URLEncoder.encode("盘点明细", "UTF-8").replaceAll("\\+", "%20");
+        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+        var excelWriter = EasyExcel.write(response.getOutputStream()).build();
+
+        // 汇总 sheet
+        List<List<Object>> summaryData = new ArrayList<>();
+        summaryData.add(Arrays.asList("单据编号", "仓库", "仓库路径", "盘点方式", "总项数", "差异数", "日期", "状态"));
+        for (StockTake s : list) {
+            String typeText = s.getTakeType() != null && s.getTakeType() == 0 ? "全盘" : "抽盘";
+            String statusText = switch (s.getStatus()) {
+                case 0 -> "盘点中"; case 1 -> "已审核"; case 2 -> "已调整";
+                default -> "未知";
+            };
+            List<Object> row = new ArrayList<>();
+            row.add(s.getOrderNo());
+            row.add(s.getWarehouseName() != null ? s.getWarehouseName() : "");
+            row.add(s.getWarehousePath() != null ? s.getWarehousePath() : "");
+            row.add(typeText);
+            row.add(s.getTotalItems() != null ? s.getTotalItems() : 0);
+            row.add(s.getDiffItems() != null ? s.getDiffItems() : 0);
+            row.add(s.getOrderDate() != null ? s.getOrderDate().toString() : "");
+            row.add(statusText);
+            summaryData.add(row);
         }
+        excelWriter.write(summaryData, EasyExcel.writerSheet("汇总").build());
+
+        // 一次批量查询，按单号分组
+        List<StockTakeDetailExportVO> allDetails = stockTakeService.getExportDetailList(list);
+        var grouped = allDetails.stream().collect(Collectors.groupingBy(StockTakeDetailExportVO::getOrderNo, java.util.LinkedHashMap::new, Collectors.toList()));
+
+        // 汇总明细 sheet：所有订单明细合在一起，不同订单之间空一行
+        WriteSheet summaryDetailSheet = EasyExcel.writerSheet("汇总明细").head(StockTakeDetailExportVO.class).build();
+        boolean first = true;
+        for (var entry : grouped.entrySet()) {
+            if (!first) {
+                List<Object> emptyRow = new ArrayList<>();
+                for (int i = 0; i < 14; i++) emptyRow.add("");
+                excelWriter.write(List.of(emptyRow), summaryDetailSheet);
+            }
+            excelWriter.write(entry.getValue(), summaryDetailSheet);
+            first = false;
+        }
+
+        // 每个订单单独一个 sheet
+        for (var entry : grouped.entrySet()) {
+            WriteSheet writeSheet = EasyExcel.writerSheet(entry.getKey()).head(StockTakeDetailExportVO.class).build();
+            excelWriter.write(entry.getValue(), writeSheet);
+        }
+        excelWriter.finish();
     }
 
     @SaCheckRole("role_1")

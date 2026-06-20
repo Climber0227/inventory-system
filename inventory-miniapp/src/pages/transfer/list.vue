@@ -95,9 +95,15 @@ onPullDownRefresh(() => { fetchList(); uni.stopPullDownRefresh() })
         </view>
         <view class="card-body">
           <view style="display:flex;justify-content:space-between;">
-            <text>🏭 {{ item.fromWarehouseName || '-' }}</text>
-            <text>→</text>
-            <text>🏭 {{ item.toWarehouseName || '-' }}</text>
+            <view>
+              <text style="font-size:13px;font-weight:500;">🏭 {{ item.fromWarehouseName || '-' }}</text>
+              <text v-if="item.fromWarehousePath" style="font-size:10px;color:#aaa;display:block;">{{ item.fromWarehousePath }}</text>
+            </view>
+            <text style="font-size:18px;color:#999;">→</text>
+            <view style="text-align:right;">
+              <text style="font-size:13px;font-weight:500;">🏭 {{ item.toWarehouseName || '-' }}</text>
+              <text v-if="item.toWarehousePath" style="font-size:10px;color:#aaa;display:block;">{{ item.toWarehousePath }}</text>
+            </view>
           </view>
           <view style="color:#888;">
             <text>数量: {{ item.totalQuantity }}</text>

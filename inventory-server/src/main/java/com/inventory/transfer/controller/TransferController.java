@@ -22,6 +22,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -155,7 +156,7 @@ public class TransferController {
     @Operation(summary = "导出调拨单")
     @GetMapping("/export")
     public void export(HttpServletResponse response,
-                       @RequestParam(required = false) String ids) {
+                       @RequestParam(required = false) String ids) throws IOException {
         List<InventoryTransfer> list = transferService.listAll().stream()
                 .filter(t -> t.getStatus() != null && t.getStatus() != 3)
                 .collect(Collectors.toList());
@@ -165,19 +166,53 @@ public class TransferController {
         }
         response.setContentType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         response.setCharacterEncoding("utf-8");
-        try {
-            String fileName = URLEncoder.encode("库存调拨", "UTF-8").replaceAll("\\+", "%20");
-            response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
-            var excelWriter = EasyExcel.write(response.getOutputStream(), TransferDetailExportVO.class).build();
-            for (InventoryTransfer s : list) {
-                List<TransferDetailExportVO> sheetData = transferService.getExportDetailList(List.of(s));
-                WriteSheet writeSheet = EasyExcel.writerSheet(s.getOrderNo()).build();
-                excelWriter.write(sheetData, writeSheet);
-            }
-            excelWriter.finish();
-        } catch (IOException e) {
-            throw new RuntimeException("导出失败", e);
+        String fileName = URLEncoder.encode("库存调拨", "UTF-8").replaceAll("\\+", "%20");
+        response.setHeader("Content-disposition", "attachment;filename*=utf-8''" + fileName + ".xlsx");
+        var excelWriter = EasyExcel.write(response.getOutputStream()).build();
+
+        // 汇总 sheet
+        List<List<Object>> summaryData = new ArrayList<>();
+        summaryData.add(Arrays.asList("单据编号", "调出仓库", "调出仓库路径", "调入仓库", "调入仓库路径", "调拨数量", "日期", "状态"));
+        for (InventoryTransfer t : list) {
+            String statusText = switch (t.getStatus()) {
+                case 0 -> "草稿"; case 1 -> "已完成"; case 2 -> "已取消"; case 4 -> "待审批";
+                default -> "未知";
+            };
+            List<Object> row = new ArrayList<>();
+            row.add(t.getOrderNo());
+            row.add(t.getFromWarehouseName() != null ? t.getFromWarehouseName() : "");
+            row.add(t.getFromWarehousePath() != null ? t.getFromWarehousePath() : "");
+            row.add(t.getToWarehouseName() != null ? t.getToWarehouseName() : "");
+            row.add(t.getToWarehousePath() != null ? t.getToWarehousePath() : "");
+            row.add(t.getTotalQuantity() != null ? t.getTotalQuantity() : 0);
+            row.add(t.getOrderDate() != null ? t.getOrderDate().toString() : "");
+            row.add(statusText);
+            summaryData.add(row);
         }
-        // grouped by sheet above
+        excelWriter.write(summaryData, EasyExcel.writerSheet("汇总").build());
+
+        // 一次批量查询，按单号分组
+        List<TransferDetailExportVO> allDetails = transferService.getExportDetailList(list);
+        var grouped = allDetails.stream().collect(Collectors.groupingBy(TransferDetailExportVO::getOrderNo, java.util.LinkedHashMap::new, Collectors.toList()));
+
+        // 汇总明细 sheet：所有订单明细合在一起，不同订单之间空一行
+        WriteSheet summaryDetailSheet = EasyExcel.writerSheet("汇总明细").head(TransferDetailExportVO.class).build();
+        boolean first = true;
+        for (var entry : grouped.entrySet()) {
+            if (!first) {
+                List<Object> emptyRow = new ArrayList<>();
+                for (int i = 0; i < 12; i++) emptyRow.add("");
+                excelWriter.write(List.of(emptyRow), summaryDetailSheet);
+            }
+            excelWriter.write(entry.getValue(), summaryDetailSheet);
+            first = false;
+        }
+
+        // 每个订单单独一个 sheet
+        for (var entry : grouped.entrySet()) {
+            WriteSheet writeSheet = EasyExcel.writerSheet(entry.getKey()).head(TransferDetailExportVO.class).build();
+            excelWriter.write(entry.getValue(), writeSheet);
+        }
+        excelWriter.finish();
     }
 }

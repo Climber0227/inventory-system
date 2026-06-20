@@ -145,8 +145,18 @@ onMounted(async () => {
       <el-table :data="list" v-loading="loading" stripe border @selection-change="(rows: any[]) => selectedIds = rows.map((r: any) => r.id)">
         <el-table-column type="selection" width="45" />
         <el-table-column prop="orderNo" label="调拨单号" width="150" />
-        <el-table-column prop="fromWarehouseName" label="调出仓库" width="120" />
-        <el-table-column prop="toWarehouseName" label="调入仓库" width="120" />
+        <el-table-column label="调出仓库" width="160">
+          <template #default="{ row }">
+            <div>{{ row.fromWarehouseName || '-' }}</div>
+            <div v-if="row.fromWarehousePath" style="font-size:11px;color:#bbb;">{{ row.fromWarehousePath }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="调入仓库" width="160">
+          <template #default="{ row }">
+            <div>{{ row.toWarehouseName || '-' }}</div>
+            <div v-if="row.toWarehousePath" style="font-size:11px;color:#bbb;">{{ row.toWarehousePath }}</div>
+          </template>
+        </el-table-column>
         <el-table-column prop="totalQuantity" label="数量" sortable width="80" />
         <el-table-column prop="operatorName" label="操作人" width="80" />
         <el-table-column prop="orderDate" label="日期" width="90" />

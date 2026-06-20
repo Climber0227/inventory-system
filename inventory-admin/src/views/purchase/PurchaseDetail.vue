@@ -83,7 +83,9 @@ onMounted(fetchDetail)
       <el-descriptions :column="3" border>
         <el-descriptions-item label="入库单号">{{ order.orderNo }}</el-descriptions-item>
         <el-descriptions-item label="供应商">{{ order.supplierName }}</el-descriptions-item>
-        <el-descriptions-item label="仓库">{{ order.warehouseName }}</el-descriptions-item>
+        <el-descriptions-item label="仓库">
+          <div>{{ order.warehouseName || '-' }}<div v-if="order.warehousePath" style="font-size:11px;color:#bbb;">{{ order.warehousePath }}</div></div>
+        </el-descriptions-item>
         <el-descriptions-item label="入库日期">{{ order.orderDate }}</el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="statusMap[order.status]?.type as any">{{ statusMap[order.status]?.label }}</el-tag>

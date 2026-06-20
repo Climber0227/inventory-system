@@ -10,6 +10,7 @@ import java.time.LocalDateTime;
 public class StockTakeExportVO {
     @ExcelProperty("单据编号") private String orderNo;
     @ExcelProperty("仓库") private String warehouseName;
+    @ExcelProperty("仓库路径") private String warehousePath;
     @ExcelProperty("盘点方式") private String takeType;
     @ExcelProperty("总项数") private Integer totalItems;
     @ExcelProperty("差异数") private Integer diffItems;

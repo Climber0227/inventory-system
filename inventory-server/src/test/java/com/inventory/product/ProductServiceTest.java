@@ -9,6 +9,7 @@ import com.inventory.product.service.ProductService;
 import com.inventory.purchase.mapper.PurchaseOrderItemMapper;
 import com.inventory.sales.mapper.SalesOrderItemMapper;
 import com.inventory.stocktake.mapper.StockTakeItemMapper;
+import com.inventory.system.mapper.SysUserMapper;
 import com.inventory.transfer.mapper.InventoryTransferItemMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,6 +33,7 @@ class ProductServiceTest {
     @Mock private InventoryTransferItemMapper transferItemMapper;
     @Mock private StockTakeItemMapper stockTakeItemMapper;
     @Mock private SqlSessionFactory sqlSessionFactory;
+    @Mock private SysUserMapper userMapper;
 
     private ProductService service;
 
@@ -39,7 +41,7 @@ class ProductServiceTest {
     void setUp() {
         service = new ProductService(productMapper, inventoryMapper, categoryMapper,
                 purchaseOrderItemMapper, salesOrderItemMapper, transferItemMapper, stockTakeItemMapper,
-                sqlSessionFactory);
+                sqlSessionFactory, userMapper);
     }
 
     @Test

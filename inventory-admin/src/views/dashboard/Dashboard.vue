@@ -235,6 +235,9 @@ onMounted(async () => {
           <el-table :data="alertList" stripe border size="small" @row-click="() => router.push('/inventory')" style="cursor:pointer;">
             <el-table-column prop="productName" label="商品" min-width="80" />
             <el-table-column prop="warehouseName" label="仓库" width="70" />
+            <el-table-column label="仓库路径" width="150">
+              <template #default="{ row }"><span style="font-size:12px;color:#888;">{{ row.warehousePath || '-' }}</span></template>
+            </el-table-column>
             <el-table-column prop="quantity" label="库存" width="60" align="center">
               <template #default="{ row }"><span style="color:#f56c6c;font-weight:600;">{{ row.quantity }}</span></template>
             </el-table-column>

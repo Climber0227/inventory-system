@@ -97,8 +97,8 @@ async function handleBatchDelete() {
   } catch {}
 }
 function handleExport(selected = false) {
-  const url = selected && selectedIds.value.length ? `/sales-order/export?ids=${selectedIds.value.join(',')}` : '/sales-order/export'
-  downloadFile(url, '销售出库.xlsx')
+  const url = selected && selectedIds.value.length ? `/sales-order/export-detail?ids=${selectedIds.value.join(',')}` : '/sales-order/export-detail'
+  downloadFile(url, '销售出库明细.xlsx')
 }
 function getSummaries(param: { columns: any[]; data: any[] }) {
   const { columns, data } = param
@@ -128,7 +128,7 @@ onMounted(async () => {
 
 <template>
   <div>
-    <div class="page-header"><h2>销售出库</h2><el-button type="primary" @click="router.push('/sales/create')">新建出库单</el-button><el-button @click="handleExport">导出Excel</el-button></div>
+    <div class="page-header"><h2>销售出库</h2><el-button type="primary" @click="router.push('/sales/create')">新建出库单</el-button><el-button type="success" @click="handleExport()">导出</el-button></div>
     <div class="search-bar" style="flex-wrap:wrap;">
       <el-input v-model="query.orderNo" placeholder="出库单号" clearable style="width:150px" @keyup.enter="handleSearch" @clear="handleSearch" />
       <el-select v-model="query.customerId" placeholder="客户" clearable filterable style="width:130px" @change="handleSearch">
@@ -151,14 +151,19 @@ onMounted(async () => {
     <div class="table-container">
       <div style="margin-bottom:10px;display:flex;align-items:center;gap:8px;">
         <span style="font-size:13px;color:#666;">{{ selectedIds.length ? '已选 ' + selectedIds.length + ' 项' : '批量操作' }}</span>
-        <el-button size="small" :disabled="!selectedIds.length" @click="handleExport(true)">批量导出</el-button>
+        <el-button size="small" type="success" :disabled="!selectedIds.length" @click="handleExport(true)">批量导出</el-button>
         <el-button v-if="userStore.isAdmin" size="small" type="danger" :disabled="!selectedIds.length" @click="handleBatchDelete">批量作废</el-button>
       </div>
       <el-table :data="list" v-loading="loading" stripe border show-summary :summary-method="getSummaries" @selection-change="(rows: any[]) => selectedIds = rows.map(r => r.id)">
         <el-table-column type="selection" width="40" />
         <el-table-column prop="orderNo" label="出库单号" width="150" />
         <el-table-column prop="customerName" label="客户" width="130" />
-        <el-table-column prop="warehouseName" label="仓库" width="80" />
+        <el-table-column label="仓库" width="160">
+          <template #default="{ row }">
+            <div>{{ row.warehouseName || '-' }}</div>
+            <div v-if="row.warehousePath" style="font-size:11px;color:#bbb;">{{ row.warehousePath }}</div>
+          </template>
+        </el-table-column>
         <el-table-column prop="totalQuantity" label="总数量" sortable width="80" />
         <el-table-column prop="totalAmount" label="总金额" sortable width="80">
           <template #default="{ row }">¥{{ row.totalAmount?.toFixed(2) }}</template>

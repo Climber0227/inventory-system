@@ -475,37 +475,19 @@ public class ProductService {
 
     @Transactional(rollbackFor = Exception.class)
     public void delete(Long id) {
-        // 检查库存
-        long invCount = inventoryMapper.selectCount(
+        // 检查库存（库存>0时不允许删除）
+        List<Inventory> invList = inventoryMapper.selectList(
                 new LambdaQueryWrapper<Inventory>().eq(Inventory::getProductId, id));
-        if (invCount > 0) throw new BusinessException("该商品存在库存记录，无法删除，请先清空库存");
+        long totalQty = invList.stream().mapToInt(Inventory::getQuantity).sum();
+        if (totalQty > 0) throw new BusinessException("该商品仍有库存（" + totalQty + "），无法删除，请先清空库存");
 
-        // 检查采购入库引用
-        long poCount = purchaseOrderItemMapper.selectCount(
-                new LambdaQueryWrapper<PurchaseOrderItem>().eq(PurchaseOrderItem::getProductId, id));
-        if (poCount > 0) throw new BusinessException("该商品已被采购入库单引用，无法删除");
-
-        // 检查销售出库引用
-        long soCount = salesOrderItemMapper.selectCount(
-                new LambdaQueryWrapper<SalesOrderItem>().eq(SalesOrderItem::getProductId, id));
-        if (soCount > 0) throw new BusinessException("该商品已被销售出库单引用，无法删除");
-
-        // 检查调拨引用
-        long trCount = transferItemMapper.selectCount(
-                new LambdaQueryWrapper<InventoryTransferItem>().eq(InventoryTransferItem::getProductId, id));
-        if (trCount > 0) throw new BusinessException("该商品已被调拨单引用，无法删除");
-
-        // 检查盘点引用
-        long stCount = stockTakeItemMapper.selectCount(
-                new LambdaQueryWrapper<StockTakeItem>().eq(StockTakeItem::getProductId, id));
-        if (stCount > 0) throw new BusinessException("该商品已被盘点单引用，无法删除");
-
+        // 不再检查历史订单引用，订单明细按快照展示，商品作废不影响已有单据
         productMapper.deleteById(id);
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void restore(Long id) {
-        Product p = productMapper.selectById(id);
+        Product p = productMapper.selectByIdIgnoreDeleted(id);
         if (p == null) throw new com.inventory.common.exception.BusinessException("商品不存在");
         p.setDeleted(0);
         productMapper.updateById(p);

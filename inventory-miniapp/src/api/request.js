@@ -1,6 +1,7 @@
 // 修改此处 BASE_URL 为实际后端地址（开发用局域网IP，生产用域名）
-// const BASE_URL = 'https://hzsf.nengchengcloud.com/api/v1'
-const BASE_URL = 'http://10.103.54.214:8888/api/v1'
+const BASE_URL = 'https://stockback.nengchengcloud.com/api/v1'
+// const BASE_URL = 'http://10.103.54.214:8888/api/v1'
+// const BASE_URL = 'http://192.168.10.162:8888/api/v1'
 // 导出 BASE_URL 供其他模块使用（如图片上传、图片预览）
 export { BASE_URL }
 
@@ -27,7 +28,7 @@ function request(method, url, data, params) {
     }
 
     const token = getToken()
-    const header = { 'Content-Type': 'application/json' }
+    const header = { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' }
     if (token) header['Authorization'] = 'Bearer ' + token
 
     uni.request({

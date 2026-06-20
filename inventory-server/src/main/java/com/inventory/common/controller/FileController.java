@@ -10,8 +10,10 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 
 @Tag(name = "文件管理")
 @RestController
@@ -44,9 +46,27 @@ public class FileController {
             String fileName = IdUtil.fastSimpleUUID() + "." + ext;
             File dest = new File(imageDir, fileName);
             file.transferTo(dest);
-            return R.ok("/uploads/images/" + fileName);
+            return R.ok("/api/v1/file/view/" + fileName);
         } catch (IOException e) {
             return R.fail("文件上传失败: " + e.getMessage());
         }
+    }
+
+    @Operation(summary = "查看图片")
+    @GetMapping("/view/{filename}")
+    public void view(@PathVariable String filename, HttpServletResponse response) throws IOException {
+        File file = new File(imageDir, filename);
+        if (!file.exists()) {
+            response.sendError(404);
+            return;
+        }
+        String ext = FileUtil.extName(filename).toLowerCase();
+        String contentType = switch (ext) {
+            case "png" -> "image/png";
+            case "gif" -> "image/gif";
+            default -> "image/jpeg";
+        };
+        response.setContentType(contentType);
+        Files.copy(file.toPath(), response.getOutputStream());
     }
 }

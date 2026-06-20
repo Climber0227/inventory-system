@@ -15,6 +15,7 @@ const customers = ref<Customer[]>([])
 const products = ref<Product[]>([])
 const whInventory = ref<any[]>([]) // 当前仓库的库存明细
 const batchInventory = ref<Record<number, Array<{batchNo: string; quantity: number}>>>({})
+const warehouseStock = ref<Record<number, number>>({})
 const productStock = ref<Record<number, number>>({})
 const dirty = ref(false)
 const saved = ref(false)

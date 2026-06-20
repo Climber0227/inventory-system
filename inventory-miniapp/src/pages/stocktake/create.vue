@@ -212,8 +212,20 @@ function onQtyChange(item) {
 async function finishTake() {
   loading.value = true
   try {
-    // 全盘时后端已自动创建明细，无需重复添加
-    if (form.value.takeType === 1) {
+    if (form.value.takeType === 0) {
+      // 全盘：后端已创建明细（actualQty=bookQty），需获取ID后更新实盘数
+      const detailRes = await request.get(`/stock-take/${form.value.stockTakeId}`)
+      const backendItems = detailRes.data.items || []
+      for (const item of items.value) {
+        const bi = backendItems.find(
+          b => b.productId === item.productId && (b.batchNo || '') === (item.batchNo || '')
+        )
+        if (bi && item.actualQty !== bi.actualQty) {
+          await request.put(`/stock-take/item/${bi.id}`, { actualQty: item.actualQty })
+        }
+      }
+    } else {
+      // 抽盘：逐个创建明细
       for (const item of items.value) {
         await request.post('/stock-take/item', {
           stockTakeId: form.value.stockTakeId,

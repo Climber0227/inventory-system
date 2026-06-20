@@ -120,7 +120,10 @@ async function rejectOrder() {
           </view>
           <view>
             <text class="detail-label">仓库</text>
-            <text class="detail-value">{{ order.warehouseName || '-' }}</text>
+            <view>
+              <text class="detail-value">{{ order.warehouseName || '-' }}</text>
+              <text v-if="order.warehousePath" style="font-size:10px;color:#bbb;display:block;margin-top:2px;">{{ order.warehousePath }}</text>
+            </view>
           </view>
           <view>
             <text class="detail-label">入库日期</text>

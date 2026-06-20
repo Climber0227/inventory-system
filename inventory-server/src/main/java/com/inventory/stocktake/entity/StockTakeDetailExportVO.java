@@ -9,6 +9,7 @@ import java.time.LocalDate;
 public class StockTakeDetailExportVO {
     @ExcelProperty("盘点单号") private String orderNo;
     @ExcelProperty("仓库") private String warehouseName;
+    @ExcelProperty("仓库路径") private String warehousePath;
     @ExcelProperty("盘点方式") private String takeType;
     @ExcelProperty("状态") private String status;
     @ColumnWidth(18) @ExcelProperty("单据日期") private LocalDate orderDate;

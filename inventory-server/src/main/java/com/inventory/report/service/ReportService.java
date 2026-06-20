@@ -127,7 +127,7 @@ public class ReportService {
 
         // 批量加载商品名称（1 次 SQL 替代 M 次）
         Map<Long, Product> productMap = productOutQty.isEmpty() ? Map.of()
-                : productMapper.selectBatchIds(productOutQty.keySet()).stream()
+                : productMapper.selectBatchIdsIgnoreDeleted(productOutQty.keySet()).stream()
                     .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
 
         for (Map.Entry<Long, Integer> entry : productOutQty.entrySet()) {

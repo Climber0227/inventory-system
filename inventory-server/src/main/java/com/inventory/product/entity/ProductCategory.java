@@ -18,6 +18,12 @@ public class ProductCategory {
     @TableLogic
     private Integer deleted;
 
+    @TableField(fill = FieldFill.INSERT)
+    private LocalDateTime createTime;
+
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updateTime;
+
     @TableField(exist = false)
     private List<ProductCategory> children;
 }

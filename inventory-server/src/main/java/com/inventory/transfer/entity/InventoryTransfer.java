@@ -39,6 +39,12 @@ public class InventoryTransfer {
     private String toWarehouseName;
 
     @TableField(exist = false)
+    private String fromWarehousePath;
+
+    @TableField(exist = false)
+    private String toWarehousePath;
+
+    @TableField(exist = false)
     private String operatorName;
 
     @TableField(exist = false)

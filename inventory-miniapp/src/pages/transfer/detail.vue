@@ -96,8 +96,14 @@ async function rejectOrder() {
         <text class="dh-st" :class="'dh-' + order.status">{{ statusMap[order.status] || '未知' }}</text>
       </view>
       <view class="ig">
-        <view class="r"><text class="l">调出仓库</text><text class="v">{{ order.fromWarehouseName || '-' }}</text></view>
-        <view class="r"><text class="l">调入仓库</text><text class="v">{{ order.toWarehouseName || '-' }}</text></view>
+        <view class="r">
+          <view class="l">调出仓库</view>
+          <view class="v-right"><text class="v">{{ order.fromWarehouseName || '-' }}</text><text v-if="order.fromWarehousePath" class="path">{{ order.fromWarehousePath }}</text></view>
+        </view>
+        <view class="r">
+          <view class="l">调入仓库</view>
+          <view class="v-right"><text class="v">{{ order.toWarehouseName || '-' }}</text><text v-if="order.toWarehousePath" class="path">{{ order.toWarehousePath }}</text></view>
+        </view>
         <view class="r"><text class="l">数量</text><text class="v">{{ order.totalQuantity }}</text></view>
         <view class="r"><text class="l">调拨日期</text><text class="v">{{ order.orderDate || '-' }}</text></view>
         <view v-if="order.approverName" class="r"><text class="l">审核人</text><text class="v">{{ order.approverName }}</text></view>
@@ -140,6 +146,7 @@ async function rejectOrder() {
 .ig .r { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f0f0f0; font-size: 14px; }
 .ig .r:last-child { border-bottom: none; }
 .ig .l { color: #999; } .ig .v { font-weight: 500; }
+.v-right { text-align: right; } .path { display: block; font-size: 10px; color: #bbb; margin-top: 2px; }
 .pl { background: #fff; border-radius: 8px; padding: 16px; margin-bottom: 10px; }
 .pl-title { font-size: 14px; font-weight: 600; margin-bottom: 10px; display: block; }
 .pi { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f5f5f5; font-size: 13px; }

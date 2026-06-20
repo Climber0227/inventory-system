@@ -81,8 +81,12 @@ onMounted(fetchDetail)
       <h3>基本信息</h3>
       <el-descriptions :column="3" border>
         <el-descriptions-item label="调拨单号">{{ order.orderNo }}</el-descriptions-item>
-        <el-descriptions-item label="调出仓库">{{ order.outWarehouseName }}</el-descriptions-item>
-        <el-descriptions-item label="调入仓库">{{ order.inWarehouseName }}</el-descriptions-item>
+        <el-descriptions-item label="调出仓库">
+          <div>{{ order.fromWarehouseName || '-' }}<div v-if="order.fromWarehousePath" style="font-size:11px;color:#bbb;">{{ order.fromWarehousePath }}</div></div>
+        </el-descriptions-item>
+        <el-descriptions-item label="调入仓库">
+          <div>{{ order.toWarehouseName || '-' }}<div v-if="order.toWarehousePath" style="font-size:11px;color:#bbb;">{{ order.toWarehousePath }}</div></div>
+        </el-descriptions-item>
         <el-descriptions-item label="状态">
           <el-tag :type="statusMap[order.status]?.type as any">{{ statusMap[order.status]?.label }}</el-tag>
         </el-descriptions-item>

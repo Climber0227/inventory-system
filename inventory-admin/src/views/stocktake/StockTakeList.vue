@@ -115,7 +115,12 @@ onMounted(async () => {
       <el-table :data="list" v-loading="loading" stripe border @selection-change="(rows: any[]) => selectedIds = rows.map((r: any) => r.id)">
         <el-table-column type="selection" width="45" />
         <el-table-column prop="orderNo" label="盘点单号" width="150" />
-        <el-table-column prop="warehouseName" label="仓库" width="120" />
+        <el-table-column label="仓库" width="160">
+          <template #default="{ row }">
+            <div>{{ row.warehouseName || '-' }}</div>
+            <div v-if="row.warehousePath" style="font-size:11px;color:#bbb;">{{ row.warehousePath }}</div>
+          </template>
+        </el-table-column>
         <el-table-column prop="orderDate" label="盘点日期" width="90" />
         <el-table-column prop="remark" label="备注" min-width="130" show-overflow-tooltip />
         <el-table-column prop="createTime" label="创建时间" sortable width="130">

@@ -36,11 +36,21 @@ uploads/
 # Misc
 *.log
 
-# Claude Code
+# Claude Code & AI assistants
 .claude/
+.workbuddy/
+CLAUDE.md
 
 # Worktrees
 .worktrees/
+
+# Build artifacts
+*.zip
+*.jar
+
+# WeChat miniapp private config
+project.private.config.json
+/project.config.json
 
 # Documentation (not for production)
 docs/

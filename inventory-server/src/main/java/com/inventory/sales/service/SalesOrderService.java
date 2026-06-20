@@ -14,6 +14,7 @@ import com.inventory.inventory.mapper.InventoryMapper;
 import com.inventory.product.entity.Product;
 import com.inventory.product.mapper.ProductMapper;
 import com.inventory.sales.entity.SalesOrder;
+import com.inventory.sales.entity.SalesOrderDetailExportVO;
 import com.inventory.sales.entity.SalesOrderItem;
 import com.inventory.sales.mapper.SalesOrderItemMapper;
 import com.inventory.sales.mapper.SalesOrderMapper;
@@ -127,19 +128,26 @@ public class SalesOrderService {
                 : customerMapper.selectBatchIds(customerIds).stream()
                     .collect(Collectors.toMap(Customer::getId, c -> c, (a, b) -> a));
         Map<Long, Warehouse> warehouseMap = warehouseIds.isEmpty() ? new HashMap<>()
-                : warehouseMapper.selectBatchIds(warehouseIds).stream()
+                : warehouseMapper.selectBatchIdsIgnoreDeleted(warehouseIds).stream()
                     .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        // 加载所有仓库用于构建父级路径
+        List<Warehouse> allWh = warehouseMapper.selectList(null);
+        Map<Long, Warehouse> allWhMap = allWh.stream()
+                .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
         Map<Long, SysUser> userMap = userIds.isEmpty() ? new HashMap<>()
                 : userMapper.selectBatchIds(userIds).stream()
                     .collect(Collectors.toMap(SysUser::getId, u -> u, (a, b) -> a));
         Map<Long, Product> productMap = productIds.isEmpty() ? new HashMap<>()
-                : productMapper.selectBatchIds(productIds).stream()
+                : productMapper.selectBatchIdsIgnoreDeleted(productIds).stream()
                     .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
         for (SalesOrder o : orders) {
             Customer c = customerMap.get(o.getCustomerId());
             if (c != null) o.setCustomerName(c.getName());
             Warehouse w = warehouseMap.get(o.getWarehouseId());
-            if (w != null) o.setWarehouseName(w.getName());
+            if (w != null) {
+                o.setWarehouseName(w.getName());
+                o.setWarehousePath(buildWhPath(w, allWhMap));
+            }
             SysUser op = userMap.get(o.getOperatorId());
             if (op != null) o.setOperatorName(op.getRealName());
             SysUser ap = userMap.get(o.getApproverId());
@@ -151,6 +159,36 @@ public class SalesOrderService {
             }
             o.setItems(items);
         }
+    }
+
+    /** 导出明细：每行一个商品 */
+    public List<SalesOrderDetailExportVO> getDetailExportList(List<SalesOrder> orders) {
+        enrichOrdersBatch(orders);
+        List<SalesOrderDetailExportVO> result = new ArrayList<>();
+        for (SalesOrder o : orders) {
+            List<SalesOrderItem> items = o.getItems() != null ? o.getItems() : List.of();
+            for (SalesOrderItem item : items) {
+                SalesOrderDetailExportVO vo = new SalesOrderDetailExportVO();
+                vo.setOrderNo(o.getOrderNo());
+                vo.setCustomerName(o.getCustomerName());
+                vo.setWarehouseName(o.getWarehouseName());
+                vo.setWarehousePath(o.getWarehousePath());
+                vo.setOrderDate(o.getOrderDate());
+                vo.setOperatorName(o.getOperatorName());
+                vo.setProductName(item.getProductName());
+                vo.setProductCode(item.getProductCode());
+                vo.setQuantity(item.getQuantity());
+                vo.setUnitPrice(item.getUnitPrice());
+                vo.setAmount(item.getAmount());
+                vo.setStatus(switch (o.getStatus()) {
+                    case 0 -> "草稿"; case 1 -> "已出库"; case 2 -> "已取消"; case 4 -> "待审批";
+                    default -> "未知";
+                });
+                vo.setRemark(o.getRemark());
+                result.add(vo);
+            }
+        }
+        return result;
     }
 
     @Transactional(rollbackFor = Exception.class)
@@ -382,6 +420,19 @@ public class SalesOrderService {
         for (Long id : ids) {
             voidOrder(id, reason);
         }
+    }
+
+    private String buildWhPath(Warehouse wh, Map<Long, Warehouse> allMap) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        Long cur = wh.getId();
+        java.util.Set<Long> visited = new java.util.HashSet<>();
+        while (cur != null && allMap.containsKey(cur) && visited.add(cur)) {
+            Warehouse w = allMap.get(cur);
+            parts.add(0, w.getName());
+            cur = w.getParentId();
+        }
+        if (parts.size() > 1) parts.remove(parts.size() - 1);
+        return parts.isEmpty() ? "" : String.join(" / ", parts);
     }
 
     private synchronized String generateOrderNo() {

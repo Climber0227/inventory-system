@@ -134,7 +134,9 @@ onMounted(() => { fetchDetail().then(() => fetchProducts()) })
       <h3>基本信息</h3>
       <el-descriptions :column="4" border>
         <el-descriptions-item label="盘点单号">{{ order.orderNo }}</el-descriptions-item>
-        <el-descriptions-item label="仓库">{{ order.warehouseName }}</el-descriptions-item>
+        <el-descriptions-item label="仓库">
+          <div>{{ order.warehouseName || '-' }}<div v-if="order.warehousePath" style="font-size:11px;color:#bbb;">{{ order.warehousePath }}</div></div>
+        </el-descriptions-item>
         <el-descriptions-item label="盘点方式">{{ order.takeType === 0 ? '全盘' : '抽盘' }}</el-descriptions-item>
         <el-descriptions-item label="盘点日期">{{ order.orderDate || '-' }}</el-descriptions-item>
         <el-descriptions-item label="状态">

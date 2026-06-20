@@ -138,19 +138,29 @@ public class TransferService {
         Set<Long> productIds = allItems.stream().map(InventoryTransferItem::getProductId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
         Map<Long, Warehouse> warehouseMap = warehouseIds.isEmpty() ? new HashMap<>()
-                : warehouseMapper.selectBatchIds(warehouseIds).stream()
+                : warehouseMapper.selectBatchIdsIgnoreDeleted(warehouseIds).stream()
                     .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
+        // 加载所有仓库用于构建父级路径
+        List<Warehouse> allWh = warehouseMapper.selectList(null);
+        Map<Long, Warehouse> allWhMap = allWh.stream()
+                .collect(Collectors.toMap(Warehouse::getId, w -> w, (a, b) -> a));
         Map<Long, SysUser> userMap = userIds.isEmpty() ? new HashMap<>()
                 : userMapper.selectBatchIds(userIds).stream()
                     .collect(Collectors.toMap(SysUser::getId, u -> u, (a, b) -> a));
         Map<Long, Product> productMap = productIds.isEmpty() ? new HashMap<>()
-                : productMapper.selectBatchIds(productIds).stream()
+                : productMapper.selectBatchIdsIgnoreDeleted(productIds).stream()
                     .collect(Collectors.toMap(Product::getId, p -> p, (a, b) -> a));
         for (InventoryTransfer t : transfers) {
             Warehouse fw = warehouseMap.get(t.getFromWarehouseId());
-            if (fw != null) t.setFromWarehouseName(fw.getName());
+            if (fw != null) {
+                t.setFromWarehouseName(fw.getName());
+                t.setFromWarehousePath(buildWhPath(fw, allWhMap));
+            }
             Warehouse tw = warehouseMap.get(t.getToWarehouseId());
-            if (tw != null) t.setToWarehouseName(tw.getName());
+            if (tw != null) {
+                t.setToWarehouseName(tw.getName());
+                t.setToWarehousePath(buildWhPath(tw, allWhMap));
+            }
             SysUser op = userMap.get(t.getOperatorId());
             if (op != null) t.setOperatorName(op.getRealName());
             SysUser ap = userMap.get(t.getApproverId());
@@ -174,7 +184,9 @@ public class TransferService {
                 TransferDetailExportVO vo = new TransferDetailExportVO();
                 vo.setOrderNo(t.getOrderNo());
                 vo.setFromWarehouseName(t.getFromWarehouseName());
+                vo.setFromWarehousePath(t.getFromWarehousePath());
                 vo.setToWarehouseName(t.getToWarehouseName());
+                vo.setToWarehousePath(t.getToWarehousePath());
                 vo.setStatus(t.getStatus() != null ? (t.getStatus() == 0 ? "草稿" : t.getStatus() == 1 ? "已完成" : t.getStatus() == 2 ? "已取消" : t.getStatus() == 4 ? "待审批" : "未知") : "未知");
                 if (t.getOrderDate() != null) vo.setOrderDate(t.getOrderDate());
                 if (t.getOperatorName() != null) vo.setOperatorName(t.getOperatorName());
@@ -188,7 +200,9 @@ public class TransferService {
                 TransferDetailExportVO vo = new TransferDetailExportVO();
                 vo.setOrderNo(t.getOrderNo());
                 vo.setFromWarehouseName(t.getFromWarehouseName());
+                vo.setFromWarehousePath(t.getFromWarehousePath());
                 vo.setToWarehouseName(t.getToWarehouseName());
+                vo.setToWarehousePath(t.getToWarehousePath());
                 if (t.getOrderDate() != null) vo.setOrderDate(t.getOrderDate());
                 if (t.getOperatorName() != null) vo.setOperatorName(t.getOperatorName());
                 result.add(vo);
@@ -564,6 +578,21 @@ public class TransferService {
 
         transfer.setStatus(OrderStatus.CANCELED);
         transferMapper.updateById(transfer);
+    }
+
+    private String buildWhPath(Warehouse wh, Map<Long, Warehouse> allMap) {
+        java.util.List<String> parts = new java.util.ArrayList<>();
+        Long cur = wh.getId();
+        java.util.Set<Long> visited = new java.util.HashSet<>();
+        // 先从当前仓库往上追溯到根
+        while (cur != null && allMap.containsKey(cur) && visited.add(cur)) {
+            Warehouse w = allMap.get(cur);
+            parts.add(0, w.getName());
+            cur = w.getParentId();
+        }
+        // 去掉最后一级（自身），只保留父级路径
+        if (parts.size() > 1) parts.remove(parts.size() - 1);
+        return parts.isEmpty() ? "" : String.join(" / ", parts);
     }
 
     private synchronized String generateOrderNo() {

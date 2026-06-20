@@ -2,7 +2,7 @@
 import { ref, onMounted, reactive } from 'vue'
 import request from '../../api/request'
 import type { SysUser, PageParams } from '../../types/api'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 
 const loading = ref(false)
 const list = ref<SysUser[]>([])
@@ -10,7 +10,7 @@ const total = ref(0)
 const query = reactive<PageParams & { username?: string; realName?: string; roleType?: string }>({ page: 1, size: 10, username: '', realName: '', roleType: '' })
 const dialogVisible = ref(false)
 const pwdDialogVisible = ref(false)
-const pwdForm = reactive<any>({ id: null, username: '', newPassword: '' })
+const pwdForm = reactive<any>({ id: null, username: '', newPassword: '', confirmPassword: '' })
 const form = reactive<any>({ username: '', realName: '', position: '', phone: '', email: '', password: '', role: 2 })
 
 async function fetchData() {
@@ -39,10 +39,13 @@ function openPwdDialog(row: any) {
   pwdForm.id = row.id
   pwdForm.username = row.username
   pwdForm.newPassword = ''
+  pwdForm.confirmPassword = ''
   pwdDialogVisible.value = true
 }
 async function handleDelete(row: any) {
   if (row.username === 'admin') { ElMessage.warning('admin账号不可删除'); return }
+  if (row.status === 1) { ElMessage.warning('请先禁用该账号再删除'); return }
+  try { await ElMessageBox.confirm(`确定删除账号「${row.username}」？删除后不可恢复。`, '确认删除', { type: 'warning', confirmButtonText: '删除' }) } catch { return }
   try {
     await request.delete(`/user/${row.id}`)
     ElMessage.success('已删除'); fetchData()
@@ -51,11 +54,12 @@ async function handleDelete(row: any) {
 async function handleToggleStatus(row: any) {
   if (row.username === 'admin') { ElMessage.warning('admin账号不可禁用'); return }
   const s = row.status === 1 ? 0 : 1
-  await request.put(`/user/${row.id}`, { ...row, status: s })
+  await request.put(`/user/${row.id}`, { id: row.id, status: s })
   ElMessage.success(s === 1 ? '已启用' : '已禁用'); fetchData()
 }
 async function handleResetPwd() {
   if (!pwdForm.newPassword || pwdForm.newPassword.length < 4) { ElMessage.warning('密码至少4位'); return }
+  if (pwdForm.newPassword !== pwdForm.confirmPassword) { ElMessage.warning('两次输入的密码不一致'); return }
   await request.put(`/user/${pwdForm.id}`, { id: pwdForm.id, password: pwdForm.newPassword })
   ElMessage.success('密码已更新'); pwdDialogVisible.value = false
 }
@@ -98,7 +102,7 @@ onMounted(fetchData)
             <el-button size="small" @click="openEdit(row)">编辑</el-button>
             <el-button size="small" @click="openPwdDialog(row)">改密</el-button>
             <el-button size="small" :type="row.status === 1 ? 'warning' : 'success'" @click="handleToggleStatus(row)">{{ row.status === 1 ? '禁用' : '启用' }}</el-button>
-            <el-button size="small" type="danger" @click="handleDelete(row)" :disabled="row.username === 'admin'">{{ row.username === 'admin' ? '不可删除' : '删除' }}</el-button>
+            <el-button size="small" type="danger" @click="handleDelete(row)" :disabled="row.username === 'admin' || row.status === 1">{{ row.username === 'admin' ? '不可删除' : row.status === 1 ? '需先禁用' : '删除' }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -127,6 +131,7 @@ onMounted(fetchData)
       <el-form :model="pwdForm" label-width="80px">
         <el-form-item label="账号"><el-input :model-value="pwdForm.username" disabled /></el-form-item>
         <el-form-item label="新密码" required><el-input v-model="pwdForm.newPassword" type="password" show-password /></el-form-item>
+        <el-form-item label="确认密码" required><el-input v-model="pwdForm.confirmPassword" type="password" show-password /></el-form-item>
       </el-form>
       <template #footer><el-button @click="pwdDialogVisible = false">取消</el-button><el-button type="primary" @click="handleResetPwd">确认修改</el-button></template>
     </el-dialog>

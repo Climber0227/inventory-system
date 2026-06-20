@@ -80,7 +80,10 @@ onPullDownRefresh(() => { fetchList(); uni.stopPullDownRefresh() })
         </view>
         <view class="card-body">
           <view style="display:flex;justify-content:space-between;">
-            <text>{{ item.warehouseName || '-' }}</text>
+            <view>
+              <text>{{ item.warehouseName || '-' }}</text>
+              <text v-if="item.warehousePath" style="font-size:10px;color:#bbb;display:block;">{{ item.warehousePath }}</text>
+            </view>
             <text>{{ item.takeType === 0 ? '全盘' : '抽盘' }}</text>
           </view>
           <view style="display:flex;justify-content:space-between;color:#888;">

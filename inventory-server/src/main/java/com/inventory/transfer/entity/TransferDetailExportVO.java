@@ -9,7 +9,9 @@ import java.time.LocalDate;
 public class TransferDetailExportVO {
     @ExcelProperty("调拨单号") private String orderNo;
     @ExcelProperty("调出仓库") private String fromWarehouseName;
+    @ExcelProperty("调出仓库路径") private String fromWarehousePath;
     @ExcelProperty("调入仓库") private String toWarehouseName;
+    @ExcelProperty("调入仓库路径") private String toWarehousePath;
     @ExcelProperty("状态") private String status;
     @ColumnWidth(18) @ExcelProperty("单据日期") private LocalDate orderDate;
     @ExcelProperty("操作人") private String operatorName;

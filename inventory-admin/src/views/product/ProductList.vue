@@ -2,7 +2,8 @@
 import { ref, onMounted, reactive, watch } from 'vue'
 import request, { downloadFile } from '../../api/request'
 import type { Product, PageResult, PageParams } from '../../types/api'
-import { ElMessage, ElMessageBox, ElForm, ElLoading } from 'element-plus'
+import { ElMessage, ElMessageBox, ElForm, ElLoading, ElIcon } from 'element-plus'
+import { Plus } from '@element-plus/icons-vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../store/user'
 import { useWarehouseCascaderProps } from '../../composables/useWarehouseLazy'
@@ -31,6 +32,17 @@ const query = reactive<PageParams & {
 const dialogVisible = ref(false)
 const formType = ref<'create' | 'edit'>('create')
 const formRef = ref<InstanceType<typeof ElForm>>()
+
+// 多图解析：兼容旧的单图字符串和新的 JSON 数组格式
+function parseImages(imageUrl: string | null | undefined): string[] {
+  if (!imageUrl) return []
+  if (imageUrl.startsWith('[')) { try { return JSON.parse(imageUrl) } catch { return [] } }
+  return [imageUrl]
+}
+function serializeImages(images: string[]): string {
+  return images.length ? JSON.stringify(images) : ''
+}
+
 const form = reactive<Partial<Product>>({
   code: '',
   name: '',
@@ -96,19 +108,31 @@ function handlePageChange(page: number) {
 function openCreate() {
   formType.value = 'create'
   Object.assign(form, { id: undefined, code: '', name: '', spec: '', unit: '', categoryId: undefined, purchasePrice: null, salePrice: null, minStock: 0, maxStock: 0, status: 1, imageUrl: '', remark: '' })
+  imageList.value = []
   dialogVisible.value = true
 }
 
 function openEdit(row: Product) {
   formType.value = 'edit'
   Object.assign(form, row)
+  imageList.value = parseImages(row.imageUrl).map((url, i) => ({ name: `图片${i + 1}`, url }))
   dialogVisible.value = true
+}
+
+const imageList = ref<Array<{ name: string; url: string }>>([])
+const previewImageUrl = ref('')
+const previewImageVisible = ref(false)
+function handlePreview(file: any) {
+  previewImageUrl.value = file.url
+  previewImageVisible.value = true
 }
 
 async function handleSave() {
   if (!formRef.value) return
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
+  // 序列化图片列表
+  form.imageUrl = serializeImages(imageList.value.map(f => f.url))
   try {
     if (formType.value === 'create') {
       await request.post('/product', form)
@@ -334,7 +358,7 @@ onMounted(async () => { fetchCategories(); fetchData() })
         <el-table-column prop="code" label="编码" width="150" />
         <el-table-column label="图片" width="80">
           <template #default="{ row }">
-            <el-image v-if="row.imageUrl" :src="row.imageUrl" style="width:50px;height:50px;border-radius:4px;cursor:pointer" fit="cover" :preview-src-list="[row.imageUrl]" preview-teleported />
+            <el-image v-if="parseImages(row.imageUrl).length" :src="parseImages(row.imageUrl)[0]" style="width:50px;height:50px;border-radius:4px;cursor:pointer" fit="cover" :preview-src-list="parseImages(row.imageUrl)" preview-teleported />
             <span v-else style="color:#ccc">-</span>
           </template>
         </el-table-column>
@@ -482,15 +506,17 @@ onMounted(async () => { fetchCategories(); fetchData() })
           <el-upload
             :action="'/api/v1/file/upload'"
             :headers="{ Authorization: 'Bearer ' + (userStore.token || '') }"
-            :on-success="(res: any) => { if (res.code === 200) { form.imageUrl = res.data; ElMessage.success('上传成功') } else { ElMessage.error(res.msg || '上传失败') } }"
+            :on-success="(res: any, file: any) => { if (res.code === 200) { imageList.push({ name: file.name, url: res.data }); ElMessage.success('上传成功') } else { ElMessage.error(res.msg || '上传失败') } }"
             :on-error="() => ElMessage.error('上传失败，请重试')"
-            :on-remove="() => { form.imageUrl = ''; ElMessage.info('已移除图片') }"
-            :file-list="form.imageUrl ? [{ name: '商品图片', url: form.imageUrl }] : []"
-            list-type="picture"
-            :limit="1"
+            :on-remove="(file: any) => { const idx = imageList.findIndex(f => f.url === file.url); if (idx >= 0) imageList.splice(idx, 1) }"
+            :on-preview="handlePreview"
+            :file-list="imageList"
+            list-type="picture-card"
+            :limit="5"
+            :on-exceed="() => ElMessage.warning('最多上传5张图片')"
           >
-            <el-button size="small" type="primary">点击上传</el-button>
-            <template #tip><div style="font-size:12px;color:#999">建议尺寸 200x200，不超过 10MB</div></template>
+            <template #default><el-icon size="20"><Plus /></el-icon></template>
+            <template #tip><div style="font-size:12px;color:#999">最多5张，建议尺寸 200x200</div></template>
           </el-upload>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
@@ -507,6 +533,13 @@ onMounted(async () => { fetchCategories(); fetchData() })
     <el-dialog v-model="previewDialogVisible" :title="previewProductName + ' - 条码'" width="500px" align-center>
       <div style="text-align:center;">
         <img v-if="previewBarcodeUrl" :src="previewBarcodeUrl" style="max-width:100%;height:auto;" />
+      </div>
+    </el-dialog>
+
+    <!-- 图片预览弹窗 -->
+    <el-dialog v-model="previewImageVisible" title="图片预览" width="700px" align-center>
+      <div style="text-align:center;">
+        <el-image v-if="previewImageUrl" :src="previewImageUrl" :preview-src-list="[previewImageUrl]" style="max-width:100%;max-height:70vh;cursor:zoom-in" fit="contain" />
       </div>
     </el-dialog>
 

@@ -38,6 +38,9 @@ public class PurchaseOrder {
     private String warehouseName;
 
     @TableField(exist = false)
+    private String warehousePath;
+
+    @TableField(exist = false)
     private String locationName;
 
     @TableField(exist = false)

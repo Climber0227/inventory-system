@@ -20,6 +20,9 @@ public class SalesOrderExportVO {
     @ExcelProperty("仓库")
     private String warehouseName;
 
+    @ExcelProperty("仓库路径")
+    private String warehousePath;
+
     @ExcelProperty("总数量")
     private Integer totalQuantity;
 
