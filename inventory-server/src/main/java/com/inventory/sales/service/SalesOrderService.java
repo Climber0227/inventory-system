@@ -192,33 +192,97 @@ public class SalesOrderService {
     }
 
     @Transactional(rollbackFor = Exception.class)
-    public Long create(SalesOrder order) {
-        order.setOrderNo(generateOrderNo());
-        order.setStatus(OrderStatus.DRAFT);
+    public synchronized Map<String, Object> create(SalesOrder order) {
+        List<SalesOrderItem> items = order.getItems();
+        if (items == null || items.isEmpty()) throw new BusinessException("商品明细不能为空");
+
         order.setOrderDate(order.getOrderDate() != null ? order.getOrderDate() : LocalDate.now());
 
+        // 收集每个明细的仓库归属
+        Map<Long, List<SalesOrderItem>> groups = new LinkedHashMap<>();
+        for (SalesOrderItem item : items) {
+            if (item.getProductId() == null) throw new BusinessException("商品ID不能为空");
+            Long whId = item.getWarehouseId() != null ? item.getWarehouseId() : order.getWarehouseId();
+            if (whId == null) throw new BusinessException("商品" + item.getProductName() + "未指定仓库");
+            groups.computeIfAbsent(whId, k -> new ArrayList<>()).add(item);
+        }
+
+        // 单一仓库：原逻辑
+        if (groups.size() == 1) {
+            Long whId = groups.keySet().iterator().next();
+            order.setWarehouseId(whId);
+            Long id = createSingle(order, groups.get(whId));
+            Map<String, Object> result = new HashMap<>();
+            result.put("ids", Collections.singletonList(id));
+            return result;
+        }
+
+        // 多仓库：拆成多张子订单
+        String parentOrderNo = generateOrderNo();
+        List<Long> childIds = new ArrayList<>();
+        int seq = 1;
+        for (Map.Entry<Long, List<SalesOrderItem>> entry : groups.entrySet()) {
+            SalesOrder child = new SalesOrder();
+            child.setCustomerId(order.getCustomerId());
+            child.setWarehouseId(entry.getKey());
+            child.setSalesman(order.getSalesman());
+            child.setExternalOrderNo(order.getExternalOrderNo());
+            child.setOrderDate(order.getOrderDate());
+            child.setRemark(order.getRemark());
+            child.setOperatorId(order.getOperatorId());
+            child.setParentOrderNo(parentOrderNo);
+            child.setOrderNo(parentOrderNo + "-" + seq);
+            Long cid = createSingle(child, entry.getValue());
+            childIds.add(cid);
+            seq++;
+        }
+        Map<String, Object> result = new HashMap<>();
+        result.put("ids", childIds);
+        result.put("parentOrderNo", parentOrderNo);
+        return result;
+    }
+
+    /** 创建单张订单（共享逻辑，带重复键重试） */
+    private Long createSingle(SalesOrder order, List<SalesOrderItem> items) {
+        order.setOrderNo(order.getOrderNo() != null ? order.getOrderNo() : generateOrderNo());
+        order.setStatus(OrderStatus.DRAFT);
         BigDecimal totalAmount = BigDecimal.ZERO;
         int totalQty = 0;
-        List<SalesOrderItem> items = order.getItems();
-        if (items != null) {
-            for (SalesOrderItem item : items) {
-                if (item.getProductId() == null) throw new BusinessException("商品ID不能为空");
-                item.setOrderId(null);
-                if (item.getUnitPrice() == null) item.setUnitPrice(BigDecimal.ZERO);
-                BigDecimal amount = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
-                item.setAmount(amount);
-                totalAmount = totalAmount.add(amount);
-                totalQty += item.getQuantity();
-            }
+        for (SalesOrderItem item : items) {
+            item.setOrderId(null);
+            if (item.getUnitPrice() == null) item.setUnitPrice(BigDecimal.ZERO);
+            BigDecimal amount = item.getUnitPrice().multiply(BigDecimal.valueOf(item.getQuantity()));
+            item.setAmount(amount);
+            totalAmount = totalAmount.add(amount);
+            totalQty += item.getQuantity();
         }
         order.setTotalAmount(totalAmount);
         order.setTotalQuantity(totalQty);
-        salesOrderMapper.insert(order);
-        if (items != null) {
-            for (SalesOrderItem item : items) {
-                item.setOrderId(order.getId());
-                salesOrderItemMapper.insert(item);
+
+        // 重试机制：处理订单号生成的并发竞争
+        int maxRetries = 5;
+        for (int attempt = 0; ; attempt++) {
+            try {
+                salesOrderMapper.insert(order);
+                break;
+            } catch (org.springframework.dao.DuplicateKeyException e) {
+                if (attempt >= maxRetries) throw e;
+                // 重新生成订单号并设置到所有子订单
+                String newOrderNo = generateOrderNo();
+                if (order.getParentOrderNo() != null) {
+                    // 子订单：用新的父前缀重建
+                    String suffix = order.getOrderNo().substring(order.getOrderNo().lastIndexOf('-'));
+                    order.setOrderNo(newOrderNo + suffix);
+                    order.setParentOrderNo(newOrderNo);
+                } else {
+                    order.setOrderNo(newOrderNo);
+                }
             }
+        }
+
+        for (SalesOrderItem item : items) {
+            item.setOrderId(order.getId());
+            salesOrderItemMapper.insert(item);
         }
         return order.getId();
     }
@@ -439,6 +503,7 @@ public class SalesOrderService {
         String prefix = "SO";
         String dateStr = DateUtil.format(new Date(), "yyyyMMdd");
         String likePrefix = prefix + dateStr;
+        // 查询当天所有订单（含子订单），取最大单号
         LambdaQueryWrapper<SalesOrder> wrapper = new LambdaQueryWrapper<SalesOrder>()
                 .likeRight(SalesOrder::getOrderNo, likePrefix)
                 .orderByDesc(SalesOrder::getOrderNo);
@@ -446,7 +511,11 @@ public class SalesOrderService {
         int seq = 1;
         if (!page.getRecords().isEmpty()) {
             String lastNo = page.getRecords().get(0).getOrderNo();
-            seq = Integer.parseInt(lastNo.substring(lastNo.length() - 4)) + 1;
+            // 提取数字部分：SO202606290001-3 → 001，SO202606290005 → 005
+            String numPart = lastNo.substring(prefix.length() + dateStr.length());
+            int dashIdx = numPart.indexOf('-');
+            if (dashIdx > 0) numPart = numPart.substring(0, dashIdx);
+            seq = Integer.parseInt(numPart) + 1;
         }
         String orderNo = prefix + dateStr + String.format("%04d", seq);
         while (salesOrderMapper.selectCount(new LambdaQueryWrapper<SalesOrder>().eq(SalesOrder::getOrderNo, orderNo)) > 0) {

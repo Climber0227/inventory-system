@@ -7,7 +7,8 @@ import FloatingHome from '@/components/FloatingHome'
 const editingId = ref(null)
 const customers = ref([])
 const products = ref([])
-const whInventoryRecords = ref([]) // 当前仓库库存明细（含入库日期）
+const whInventoryRecords = ref([]) // 当前仓库库存明细
+const allInvRecords = ref([]) // 全部仓库库存（多仓库模式）
 const warehouseStock = ref({})
 const submitting = ref(false)
 const showPicker = ref(false)
@@ -15,6 +16,9 @@ const pickerIndex = ref(0)
 const searchKeyword = ref('')
 const salesmanFocused = ref(false)
 const searchFocused = ref(false)
+const multiWarehouse = ref(false) // 多仓库出库
+const isChildOrder = ref(false)   // 子订单编辑，禁止再拆
+const pickingFor = ref('form') // 仓库选择器上下文：'form' 或行索引 number
 
 // 级联仓库选择
 const warehouseTree = ref([])
@@ -42,10 +46,14 @@ async function doWhSearch() {
   } finally { whSearching.value = false }
 }
 function selectWhSearchResult(item) {
-  form.value.warehouseId = item.id; showWhPicker.value = false
-  whSearchKeyword.value = ''; whSearchResults.value = []
-  whSearched.value = false
-  loadStock(item.id)
+  if (typeof pickingFor.value === 'number') {
+    const idx = pickingFor.value
+    if (form.value.items[idx]) form.value.items[idx].warehouseId = item.id
+  } else {
+    form.value.warehouseId = item.id; loadStock(item.id)
+  }
+  showWhPicker.value = false; pickingFor.value = 'form'
+  whSearchKeyword.value = ''; whSearchResults.value = []; whSearched.value = false
 }
 function getWhPath(id) {
   function f(nodes, target, path) {
@@ -75,10 +83,13 @@ onLoad((options) => {
 })
 
 onMounted(async () => {
-  const [cRes, tRes, pRes] = await Promise.all([
-    request.get('/customer/list'), request.get('/warehouse/tree'), request.get('/product/list'),
+  const [cRes, tRes, pRes, invRes] = await Promise.all([
+    request.get('/customer/list'), request.get('/warehouse/tree'),
+    request.get('/product/list'),
+    request.get('/inventory/page', { params: { page: 1, size: 99999 } }),
   ])
   customers.value = cRes.data; warehouseTree.value = tRes.data || []; products.value = pRes.data
+  allInvRecords.value = (invRes.data.records || []).filter(r => (r.quantity || 0) > 0)
 
   if (editingId.value) {
     const res = await request.get(`/sales-order/${editingId.value}`)
@@ -91,17 +102,30 @@ onMounted(async () => {
     form.value.items = (data.items || []).map(i => ({
       productId: i.productId, productName: i.productName, spec: i.spec || '',
       quantity: i.quantity, unitPrice: i.unitPrice, amount: i.amount, batchNo: i.batchNo || '',
+      warehouseId: data.warehouseId,
     }))
+    if (data.parentOrderNo) { multiWarehouse.value = false; isChildOrder.value = true }
     if (data.warehouseId) loadStock(data.warehouseId)
   }
 })
 
 // 仓库级联
-function openWarehousePicker() { whCascade.value = []; whOptions.value = warehouseTree.value || []; showWhPicker.value = true }
+function openWarehousePicker(forIdx) {
+  pickingFor.value = forIdx !== undefined ? forIdx : 'form'
+  whCascade.value = []; whOptions.value = warehouseTree.value || []; showWhPicker.value = true
+}
 function selectWhLevel(item) {
   whCascade.value.push(item)
   if (item.children?.length) { whOptions.value = item.children }
-  else { form.value.warehouseId = item.id; showWhPicker.value = false; loadStock(item.id) }
+  else {
+    if (typeof pickingFor.value === 'number') {
+      const idx = pickingFor.value
+      if (form.value.items[idx]) form.value.items[idx].warehouseId = item.id
+    } else {
+      form.value.warehouseId = item.id; loadStock(item.id)
+    }
+    showWhPicker.value = false; pickingFor.value = 'form'
+  }
 }
 function goBackTo(index) {
   whCascade.value = whCascade.value.slice(0, index + 1)
@@ -133,22 +157,32 @@ watch(() => form.value.warehouseId, async (id) => {
   if (id) loadStock(id)
 })
 
-// 只显示当前仓库有库存的商品，附带库存数和最早入库日期
+// 多仓库切换时清空主仓库/行仓库
+watch(multiWarehouse, (on) => {
+  if (on) {
+    form.value.warehouseId = null
+  } else {
+    for (const item of form.value.items) {
+      item.warehouseId = form.value.warehouseId || undefined
+    }
+  }
+})
+
+function getInvForItem(index) {
+  if (!multiWarehouse.value) return whInventoryRecords.value
+  const whId = form.value.items[index]?.warehouseId
+  if (!whId) return []
+  return allInvRecords.value.filter(r => r.warehouseId === whId && r.productId && (r.quantity || 0) > 0)
+    .sort((a, b) => (b.createTime || '').localeCompare(a.createTime || ''))
+}
+
+// 只显示当前仓库（或多仓库各行对应仓库）有库存的商品
 const sortedProducts = computed(() => {
-  return whInventoryRecords.value
-    .filter(r => r.productId && (r.quantity || 0) > 0)
-    .map(r => {
-      const p = products.value.find(x => x.id === r.productId)
-      return {
-        id: r.productId, name: r.productName || (p ? p.name : ''),
-        code: r.productCode || (p ? p.code : ''), spec: p ? p.spec : '',
-        salePrice: p ? p.salePrice : null,
-        stock: r.quantity || 0,
-        stockDate: r.createTime?.substring(0, 16) || '',
-        batchNo: r.batchNo || '',
-      }
-    })
-    .sort((a, b) => (b.stockDate || '').localeCompare(a.stockDate || ''))
+  const inv = getInvForItem(pickerIndex.value)
+  return inv.map(r => {
+    const p = products.value.find(x => x.id === r.productId)
+    return { id: r.productId, name: r.productName || (p ? p.name : ''), code: r.productCode || (p ? p.code : ''), spec: p ? p.spec : '', salePrice: p ? p.salePrice : null, stock: r.quantity || 0, stockDate: r.createTime?.substring(0, 16) || '', batchNo: r.batchNo || '' }
+  }).sort((a, b) => (b.stockDate || '').localeCompare(a.stockDate || ''))
 })
 
 const filteredProducts = computed(() => {
@@ -170,7 +204,7 @@ function selectProduct(p) {
 }
 
 function addItem() {
-  form.value.items.push({ productId: null, productName: '', spec: '', quantity: 1, unitPrice: null, amount: null, batchNo: '' })
+  form.value.items.push({ productId: null, productName: '', spec: '', quantity: 1, unitPrice: null, amount: null, batchNo: '', warehouseId: form.value.warehouseId || null })
 }
 
 function removeItem(index) { form.value.items.splice(index, 1) }
@@ -178,16 +212,23 @@ function removeItem(index) { form.value.items.splice(index, 1) }
 function scanCode(index) {
   uni.scanCode({
     success: (res) => {
-      // 先从当前仓库库存中查找
-      let match = whInventoryRecords.value.find(r => r.productCode === res.result || null)
-      if (!match) {
-        const p = products.value.find(x => x.code === res.result)
-        match = whInventoryRecords.value.find(r => r.productId === (p ? p.id : null))
-      }
-      if (!match) { uni.showToast({ title: '当前仓库无此商品库存', icon: 'none' }); return }
       const item = form.value.items[index]
       if (!item) return
+      // 确定搜索范围：多仓库模式搜全部，单仓库模式搜当前仓库
+      const pool = multiWarehouse.value
+        ? (item.warehouseId ? allInvRecords.value.filter(r => r.warehouseId === item.warehouseId) : allInvRecords.value)
+        : whInventoryRecords.value
+      let match = pool.find(r => r.productCode === res.result || r.productCode)
+      if (!match) {
+        const p = products.value.find(x => x.code === res.result)
+        match = pool.find(r => r.productId === (p ? p.id : null))
+      }
+      if (!match) { uni.showToast({ title: multiWarehouse.value ? '所有仓库无此商品库存' : '当前仓库无此商品库存', icon: 'none' }); return }
       item.productId = match.productId; item.productName = match.productName; item.batchNo = match.batchNo || ''
+      // 多仓库下如果该行还选了仓库，扫码结果自动绑定
+      if (multiWarehouse.value && !item.warehouseId && match.warehouseId) {
+        item.warehouseId = match.warehouseId
+      }
       const p = products.value.find(x => x.id === match.productId)
       if (p) { item.spec = p.spec || ''; if (!item.unitPrice) item.unitPrice = p.salePrice }
       calcAmount(item)
@@ -200,36 +241,55 @@ function calcAmount(item) {
 }
 
 async function handleSaveDraft() {
-  if (!form.value.warehouseId || !form.value.items.length) {
-    uni.showToast({ title: '请选择仓库并添加商品', icon: 'none' }); return
+  if (submitting.value) return
+  if (!form.value.warehouseId && !multiWarehouse.value) {
+    uni.showToast({ title: '请选择仓库或开启多仓库', icon: 'none' }); return
   }
+  if (!form.value.items.length) { uni.showToast({ title: '请添加商品', icon: 'none' }); return }
   submitting.value = true
   try {
     if (editingId.value) {
       await request.put(`/sales-order/${editingId.value}/draft`, form.value)
     } else {
       const res = await request.post('/sales-order', form.value)
-      editingId.value = res.data
+      const data = res.data
+      const ids = data.ids || [data]
+      editingId.value = ids[0]
+      if (ids.length > 1) uni.showToast({ title: `已拆为 ${ids.length} 张草稿`, icon: 'success' })
+      else uni.showToast({ title: '已保存草稿', icon: 'success' })
     }
-    uni.showToast({ title: '已保存草稿', icon: 'success' })
     setTimeout(() => uni.switchTab({ url: '/pages/sales/list' }), 300)
   } finally { submitting.value = false }
 }
 
 async function handleSubmit() {
-  if (!form.value.warehouseId || !form.value.items.length) {
-    uni.showToast({ title: '请填写完整信息', icon: 'none' }); return
+  if (submitting.value) return
+  if (!form.value.warehouseId && !multiWarehouse.value) {
+    uni.showToast({ title: '请选择仓库或开启多仓库', icon: 'none' }); return
+  }
+  if (!form.value.items.length) { uni.showToast({ title: '请添加商品', icon: 'none' }); return }
+  for (const item of form.value.items) {
+    if (!item.productId) { uni.showToast({ title: '请为每行选择商品', icon: 'none' }); return }
+    if (!item.quantity || item.quantity <= 0) { uni.showToast({ title: '数量必须大于0', icon: 'none' }); return }
+    if (item.unitPrice == null || item.unitPrice < 0) { uni.showToast({ title: '请输入有效售价', icon: 'none' }); return }
+    if (multiWarehouse.value && !item.warehouseId) { uni.showToast({ title: '多仓库模式下每行必须选择仓库', icon: 'none' }); return }
   }
   submitting.value = true
   try {
+    let ids = []
     if (editingId.value) {
       await request.put(`/sales-order/${editingId.value}/draft`, form.value)
-      await request.put(`/sales-order/${editingId.value}/submit`)
+      ids = [editingId.value]
     } else {
       const res = await request.post('/sales-order', form.value)
-      await request.put(`/sales-order/${res.data}/submit`)
+      const data = res.data
+      ids = data.ids || [data]
     }
-    uni.showToast({ title: '已提交审批', icon: 'success' })
+    for (const id of ids) {
+      await request.put(`/sales-order/${id}/submit`)
+    }
+    const tip = ids.length > 1 ? `已拆为 ${ids.length} 张并提交` : '已提交审批'
+    uni.showToast({ title: tip, icon: 'success' })
     setTimeout(() => uni.switchTab({ url: '/pages/sales/list' }), 300)
   } finally { submitting.value = false }
 }
@@ -245,9 +305,12 @@ async function handleSubmit() {
         </picker>
       </view>
       <view class="form-item">
-        <text class="label">仓库 *</text>
-        <view class="picker picker-select" @click="openWarehousePicker">
-          <text :style="!form.warehouseId ? 'color:#bbb;' : ''">{{ whDisplay }}</text>
+        <text class="label">{{ multiWarehouse ? '默认仓库' : '仓库 *' }}</text>
+        <view style="display:flex;align-items:center;gap:8px;">
+          <view class="picker picker-select" :style="multiWarehouse ? 'opacity:0.5;' : ''" @click="!multiWarehouse && openWarehousePicker()" style="flex:1;">
+            <text :style="!form.warehouseId ? 'color:#bbb;' : ''">{{ multiWarehouse ? '每行独立选择' : whDisplay }}</text>
+          </view>
+          <text v-if="!isChildOrder && form.items.length === 0" class="mw-toggle" :class="{ on: multiWarehouse }" @click="multiWarehouse = !multiWarehouse">{{ multiWarehouse ? '✓ 多仓库' : '多仓库出库' }}</text>
         </view>
         <!-- 级联仓库选择 -->
         <view v-if="showWhPicker" class="picker-overlay" @click="showWhPicker = false">
@@ -305,10 +368,18 @@ async function handleSubmit() {
         <text class="add-link" @click="addItem">+ 添加</text>
       </view>
       <text class="scan-hint">提示：请手动添加商品，或使用右侧 📱 按钮扫条码快速选择</text>
+      <view v-if="multiWarehouse" style="background:#e8f5e9;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#2e7d32;line-height:1.6;">
+        💡 <b>多仓库出库</b>：每行独立选仓库，提交后自动拆为多张出库单，各自审批。子订单不可合并、不可再拆，请确认每行仓库无误。
+      </view>
       <view v-for="(item, index) in form.items" :key="index" class="item-card">
         <view class="item-header">
           <text>商品 {{ index + 1 }}</text>
           <text class="del-link" @click="removeItem(index)">删除</text>
+        </view>
+        <view v-if="multiWarehouse" style="margin-bottom:4px;">
+          <view class="picker picker-select" @click="openWarehousePicker(index)" style="font-size:13px;">
+            <text :style="!item.warehouseId ? 'color:#bbb;' : ''">{{ item.warehouseId ? (findWhInTree(warehouseTree, item.warehouseId)?.name || '仓库'+item.warehouseId) : '选择仓库' }}</text>
+          </view>
         </view>
         <view class="ic-row">
           <view class="picker picker-select" @click="openPicker(index)" style="flex:1;overflow:hidden;">
@@ -318,7 +389,7 @@ async function handleSubmit() {
         </view>
         <view v-if="item.productId" class="selected-info">
           <text>规格: {{ item.spec || '-' }}</text>
-          <text>仓库库存: {{ warehouseStock[item.productId] ?? '-' }}</text>
+          <text>{{ multiWarehouse ? '' : '仓库库存: ' + (warehouseStock[item.productId] ?? '-') }}</text>
         </view>
         <view class="item-row">
           <view class="item-field">
@@ -355,7 +426,10 @@ async function handleSubmit() {
               </text>
             </view>
           </view>
-          <view v-if="filteredProducts.length === 0" style="text-align:center;padding:20px;color:#999;">该仓库暂无可用库存</view>
+          <view v-if="filteredProducts.length === 0" style="text-align:center;padding:20px;color:#999;">
+            <template v-if="multiWarehouse && !form.items[pickerIndex]?.warehouseId">请先选择该行的出库仓库</template>
+            <template v-else>该仓库暂无可用库存</template>
+          </view>
         </scroll-view>
       </view>
     </view>
@@ -413,4 +487,7 @@ async function handleSubmit() {
 .search-btn:active { opacity:0.8; }
 .level-tab { display:inline-block; padding:4px 10px; border-radius:4px; font-size:12px; background:#f5f5f5; color:#666; }
 .level-tab.active { background:#2e7d32; color:#fff; }
+.mw-toggle { display:inline-block; padding:6px 12px; border-radius:6px; font-size:13px; white-space:nowrap; background:#f5f5f5; color:#666; border:1px solid #dcdfe6; }
+.mw-toggle.on { background:#e8f5e9; color:#2e7d32; border-color:#a5d6a7; font-weight:bold; }
+.mw-toggle:active { opacity:0.7; }
 </style>

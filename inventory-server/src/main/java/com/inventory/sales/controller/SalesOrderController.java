@@ -65,9 +65,9 @@ public class SalesOrderController {
         return R.ok(salesOrderService.getDetail(id));
     }
 
-    @Operation(summary = "新增销售订单")
+    @Operation(summary = "新增销售订单（支持多仓库拆单）")
     @PostMapping
-    public R<Long> create(@RequestBody SalesOrder order) {
+    public R<Map<String, Object>> create(@RequestBody SalesOrder order) {
         order.setOperatorId(StpUtil.getLoginIdAsLong());
         return R.ok(salesOrderService.create(order));
     }

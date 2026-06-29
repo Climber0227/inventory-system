@@ -18,6 +18,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import com.inventory.common.exception.BusinessException;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -69,6 +70,26 @@ public class ProductController {
     public R<Long> create(@RequestBody Product product) {
         productService.save(product);
         return R.ok(product.getId());
+    }
+
+    @SaCheckRole("role_1")
+    @Operation(summary = "快速创建商品（采购入库时使用）")
+    @PostMapping("/quick-create")
+    public R<Product> quickCreate(@RequestBody Map<String, Object> body) {
+        String name = body.get("name") != null ? body.get("name").toString().trim() : "";
+        if (name.isEmpty()) throw new BusinessException("商品名称不能为空");
+        Product product = new Product();
+        product.setName(name);
+        product.setUnit(body.getOrDefault("unit", "个").toString());
+        if (body.get("spec") != null) product.setSpec(body.get("spec").toString().trim());
+        if (body.get("purchasePrice") != null) {
+            product.setPurchasePrice(new java.math.BigDecimal(body.get("purchasePrice").toString()));
+        }
+        if (body.get("categoryId") != null) {
+            product.setCategoryId(Long.valueOf(body.get("categoryId").toString()));
+        }
+        productService.save(product);
+        return R.ok(product);
     }
 
     @SaCheckRole("role_1")

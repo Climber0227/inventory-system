@@ -50,12 +50,14 @@ function onWarehouseChange(val: number) {
 }
 
 async function fetchBaseData() {
-  const [sRes, pRes] = await Promise.all([
+  const [sRes, pRes, cRes] = await Promise.all([
     request.get('/supplier/list'),
     request.get('/product/list'),
+    request.get('/category/tree'),
   ])
   suppliers.value = sRes.data.data
   products.value = pRes.data.data
+  categoryTree.value = cRes.data.data || []
   await fetchWarehouseTree()
 }
 
@@ -71,6 +73,41 @@ function addItem() {
     expiryDate: '',
     remark: '',
   })
+}
+
+// 快速创建商品
+const showCreateProduct = ref(false)
+const newProductName = ref('')
+const newProductUnit = ref('个')
+const newProductSpec = ref('')
+const newProductPurchasePrice = ref<number | undefined>(undefined)
+const newProductCategoryId = ref<number | undefined>(undefined)
+const categoryTree = ref<any[]>([])
+const creating = ref(false)
+
+function openCreateProduct() {
+  newProductName.value = ''
+  newProductUnit.value = '个'
+  newProductSpec.value = ''
+  newProductPurchasePrice.value = undefined
+  newProductCategoryId.value = undefined
+  showCreateProduct.value = true
+}
+
+async function confirmCreateProduct() {
+  if (!newProductName.value.trim()) { ElMessage.warning('请输入商品名称'); return }
+  creating.value = true
+  try {
+    const body: Record<string, any> = { name: newProductName.value.trim(), unit: newProductUnit.value || '个' }
+    if (newProductSpec.value.trim()) body.spec = newProductSpec.value.trim()
+    if (newProductPurchasePrice.value != null) body.purchasePrice = newProductPurchasePrice.value
+    if (newProductCategoryId.value != null) body.categoryId = newProductCategoryId.value
+    const res = await request.post('/product/quick-create', body)
+    const p = res.data.data
+    products.value.push(p)
+    showCreateProduct.value = false
+    ElMessage.success(`已创建商品「${p.name}」`)
+  } finally { creating.value = false }
 }
 
 function removeItem(index: number) {
@@ -264,7 +301,10 @@ onMounted(async () => {
     <div class="detail-card">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
         <h3>商品明细</h3>
-        <el-button type="primary" size="small" @click="addItem">+ 添加商品</el-button>
+        <div style="display:flex;gap:8px;">
+          <el-button size="small" @click="openCreateProduct">新建商品</el-button>
+          <el-button type="primary" size="small" @click="addItem">+ 添加商品</el-button>
+        </div>
       </div>
       <div style="color:#f56c6c;font-size:13px;margin-bottom:12px;">已自动填充采购价，支持手动修改，修改后请务必核实单价</div>
       <el-table :data="form.items" border stripe>
@@ -315,5 +355,30 @@ onMounted(async () => {
       <el-button :loading="submitting" @click="handleSave">保存草稿</el-button>
       <el-button type="primary" :loading="submitting" @click="handleSubmit">提交审批</el-button>
     </div>
+
+    <!-- 快速创建商品弹窗 -->
+    <el-dialog v-model="showCreateProduct" title="新建商品" width="460px">
+      <el-form label-width="80px">
+        <el-form-item label="商品名称" required>
+          <el-input v-model="newProductName" placeholder="输入商品名称" />
+        </el-form-item>
+        <el-form-item label="规格">
+          <el-input v-model="newProductSpec" placeholder="选填" />
+        </el-form-item>
+        <el-form-item label="单位">
+          <el-input v-model="newProductUnit" placeholder='默认"个"' />
+        </el-form-item>
+        <el-form-item label="采购价">
+          <el-input-number v-model="newProductPurchasePrice" :precision="2" :min="0" style="width:100%" placeholder="选填" />
+        </el-form-item>
+        <el-form-item label="分类">
+          <el-tree-select v-model="newProductCategoryId" :data="categoryTree" :props="{ value: 'id', label: 'name', children: 'children' }" placeholder="选择分类" clearable check-strictly style="width:100%" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCreateProduct = false">取消</el-button>
+        <el-button type="primary" :loading="creating" @click="confirmCreateProduct">确认创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>

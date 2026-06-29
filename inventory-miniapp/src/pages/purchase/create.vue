@@ -10,6 +10,7 @@ const userStore = useUserStore()
 const editingId = ref(null)
 const suppliers = ref([])
 const products = ref([])
+const categories = ref([]) // 分类树
 const warehouseStock = ref({})
 const submitting = ref(false)
 const showPicker = ref(false)
@@ -89,10 +90,11 @@ onLoad((options) => {
 })
 
 onMounted(async () => {
-  const [sRes, tRes, pRes] = await Promise.all([
-    request.get('/supplier/list'), request.get('/warehouse/tree'), request.get('/product/list'),
+  const [sRes, tRes, pRes, cRes] = await Promise.all([
+    request.get('/supplier/list'), request.get('/warehouse/tree'), request.get('/product/list'), request.get('/category/tree'),
   ])
   suppliers.value = sRes.data; warehouseTree.value = tRes.data || []; products.value = pRes.data
+  categories.value = cRes.data || []
 
   if (editingId.value) {
     const res = await request.get(`/purchase-order/${editingId.value}`)
@@ -200,6 +202,70 @@ function addItem() {
 }
 
 function removeItem(index) { form.value.items.splice(index, 1) }
+
+// 快速创建商品
+const showCreateForm = ref(false)
+const newProductName = ref('')
+const newProductUnit = ref('个')
+const newProductSpec = ref('')
+const newProductPurchasePrice = ref('')
+const newProductCategoryId = ref(null)
+const newProductCategoryIndex = ref(-1)
+
+// 扁平化分类树（带缩进）用于 picker
+const flatCategories = computed(() => {
+  const result = []
+  function walk(nodes, depth) {
+    for (const n of nodes) {
+      if (!n) continue
+      result.push({ id: n.id, name: (depth ? '--'.repeat(depth) + '> ' : '') + n.name })
+      if (n.children?.length) walk(n.children, depth + 1)
+    }
+  }
+  walk(categories.value, 0)
+  return result
+})
+
+function onCategoryChange(e) {
+  newProductCategoryIndex.value = e.detail.value
+  const cat = flatCategories.value[newProductCategoryIndex.value]
+  newProductCategoryId.value = cat ? cat.id : null
+}
+const categoryDisplayName = computed(() => {
+  const idx = newProductCategoryIndex.value
+  if (idx < 0 || idx >= flatCategories.value.length) return '选择分类'
+  const name = flatCategories.value[idx].name || ''
+  return name.replace(/^[- >]+/, '')
+})
+
+function openCreateForm() {
+  newProductName.value = ''
+  newProductUnit.value = '个'
+  newProductSpec.value = ''
+  newProductPurchasePrice.value = ''
+  newProductCategoryId.value = null
+  newProductCategoryIndex.value = -1
+  showCreateForm.value = true
+}
+async function confirmCreateProduct() {
+  if (!newProductName.value.trim()) { uni.showToast({ title: '请输入商品名称', icon: 'none' }); return }
+  try {
+    const body = { name: newProductName.value.trim(), unit: newProductUnit.value || '个' }
+    if (newProductSpec.value.trim()) body.spec = newProductSpec.value.trim()
+    if (newProductPurchasePrice.value && !isNaN(Number(newProductPurchasePrice.value))) body.purchasePrice = Number(newProductPurchasePrice.value)
+    if (newProductCategoryId.value != null) body.categoryId = newProductCategoryId.value
+    const res = await request.post('/product/quick-create', body)
+    const p = res.data
+    products.value.push(p)
+    showCreateForm.value = false
+    // 自动添加一行并选中新商品
+    form.value.items.push({
+      productId: p.id, productName: p.name, spec: p.spec || '',
+      quantity: 1, unitPrice: p.purchasePrice || null, amount: p.purchasePrice || null, batchNo: '',
+    })
+    uni.showToast({ title: '已添加', icon: 'success' })
+  } catch { uni.showToast({ title: '创建失败', icon: 'none' }) }
+}
 
 function scanCode(index) {
   uni.scanCode({
@@ -323,7 +389,10 @@ async function handleSubmit() {
     <view class="section">
       <view class="section-header">
         <text class="section-title">商品明细</text>
-        <text class="add-link" @click="addItem">+ 添加</text>
+        <view style="display:flex;gap:8px;align-items:center;">
+          <text style="color:#666;font-size:13px;padding:4px 10px;border:1px solid #dcdfe6;border-radius:4px;" @click="openCreateForm">+ 新建商品</text>
+          <text class="add-link" @click="addItem">+ 添加商品</text>
+        </view>
       </view>
       <text class="scan-hint">提示：请手动添加商品，或使用右侧 📱 按钮扫条码快速选择</text>
       <view v-for="(item, index) in form.items" :key="index" class="item-card">
@@ -380,11 +449,44 @@ async function handleSubmit() {
       </view>
     </view>
 
+    <!-- 快速创建商品弹窗 -->
+    <view v-if="showCreateForm" class="picker-overlay" @click="showCreateForm = false">
+      <view class="picker-modal" @click.stop style="padding:20px;">
+        <view style="font-size:16px;font-weight:bold;margin-bottom:16px;">新建商品</view>
+        <view class="form-item">
+          <text class="label">商品名称 *</text>
+          <input v-model="newProductName" class="input" placeholder="输入商品名称" />
+        </view>
+        <view class="form-item">
+          <text class="label">规格</text>
+          <input v-model="newProductSpec" class="input" placeholder="例如：500ml、XL（选填）" />
+        </view>
+        <view class="form-item">
+          <text class="label">单位</text>
+          <input v-model="newProductUnit" class="input" placeholder="例如：个、箱、kg（默认个）" />
+        </view>
+        <view class="form-item">
+          <text class="label">采购价</text>
+          <input v-model="newProductPurchasePrice" class="input" type="digit" placeholder="采购单价（选填）" />
+        </view>
+        <view class="form-item">
+          <text class="label">分类</text>
+          <picker :value="newProductCategoryIndex" :range="flatCategories" range-key="name" @change="onCategoryChange">
+            <view class="picker">{{ categoryDisplayName }}</view>
+          </picker>
+        </view>
+        <view style="display:flex;gap:12px;margin-top:20px;">
+          <button style="flex:1;background:#f5f5f5;color:#666;border:none;border-radius:8px;height:44px;" @click="showCreateForm = false">取消</button>
+          <button style="flex:1;background:#2e7d32;color:#fff;border:none;border-radius:8px;height:44px;" @click="confirmCreateProduct">确认创建</button>
+        </view>
+      </view>
+    </view>
+
     <view style="display:flex;gap:10px;position:fixed;bottom:16px;left:16px;right:16px;">
       <button class="btn-draft" :loading="submitting" @click="handleSaveDraft">保存草稿</button>
       <button class="btn-submit" :loading="submitting" @click="handleSubmit">{{ editingId ? '保存并提交' : '确认入库' }}</button>
     </view>
-    <FloatingHome v-if="!showWhPicker && !showPicker" />
+    <FloatingHome v-if="!showWhPicker && !showPicker && !showCreateForm" />
   </view>
 </template>
 

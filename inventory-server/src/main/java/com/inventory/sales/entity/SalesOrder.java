@@ -19,6 +19,8 @@ public class SalesOrder {
     private Integer totalQuantity;
     private String salesman;
     private String externalOrderNo;
+    /** 多仓库出库拆单时，子订单指向父单号 */
+    private String parentOrderNo;
     private Integer status;
     private Long operatorId;
     private Long approverId;

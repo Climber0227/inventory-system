@@ -243,6 +243,7 @@ CREATE TABLE `sales_order` (
   `total_quantity`   INT           DEFAULT 0 COMMENT '出库总数量',
   `salesman`         VARCHAR(50)   NULL     COMMENT '销售员',
   `external_order_no` VARCHAR(100) NULL     COMMENT '外部订单号',
+  `parent_order_no`  VARCHAR(50)   NULL     COMMENT '父订单号（多仓库拆单时使用）',
   `status`           TINYINT       DEFAULT 0 COMMENT '0=草稿 1=已出库 2=已取消 3=已作废 4=待审批',
   `operator_id`      BIGINT        NULL     COMMENT '操作人ID',
   `approver_id`      BIGINT        NULL     COMMENT '审核人ID',

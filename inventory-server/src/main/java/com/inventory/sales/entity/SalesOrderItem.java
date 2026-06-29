@@ -22,4 +22,8 @@ public class SalesOrderItem {
 
     @TableField(exist = false)
     private String productCode;
+
+    /** 前端传参用，临时标记该明细归属的仓库，不持久化 */
+    @TableField(exist = false)
+    private Long warehouseId;
 }
