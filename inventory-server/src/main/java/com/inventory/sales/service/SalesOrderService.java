@@ -249,16 +249,24 @@ public class SalesOrderService {
         BigDecimal totalAmount = BigDecimal.ZERO;
         int totalQty = 0;
 
-        // 库存校验：汇总每行商品在对应仓库的可用库存
+        // 库存校验：按商品汇总需求后，逐项检查仓库可用库存
+        java.util.Map<Long, Integer> demandByProduct = new java.util.LinkedHashMap<>();
         for (SalesOrderItem item : items) {
-            Long whId = order.getWarehouseId(); // 子订单已绑定单一仓库
-            if (item.getProductId() == null) continue;
-            // 查询该商品在该仓库的所有批次总库存
-            Integer available = inventoryMapper.sumQuantityByProductAndWarehouse(item.getProductId(), whId);
+            if (item.getProductId() != null && item.getQuantity() != null) {
+                demandByProduct.merge(item.getProductId(), item.getQuantity(), Integer::sum);
+            }
+        }
+        Long whId = order.getWarehouseId();
+        for (java.util.Map.Entry<Long, Integer> e : demandByProduct.entrySet()) {
+            Integer available = inventoryMapper.sumQuantityByProductAndWarehouse(e.getKey(), whId);
             int avail = available != null ? available : 0;
-            if (item.getQuantity() != null && item.getQuantity() > avail) {
+            if (e.getValue() > avail) {
+                // 找到该商品名
+                String pn = items.stream()
+                    .filter(i -> e.getKey().equals(i.getProductId()))
+                    .findFirst().map(SalesOrderItem::getProductName).orElse(String.valueOf(e.getKey()));
                 throw new BusinessException(
-                    "商品「" + item.getProductName() + "」库存不足（需要 " + item.getQuantity() +
+                    "商品「" + pn + "」库存不足（需要 " + e.getValue() +
                     "，仓库可用 " + avail + "）"
                 );
             }
