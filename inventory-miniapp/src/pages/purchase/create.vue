@@ -394,7 +394,7 @@ async function handleSubmit() {
           <text class="add-link" @click="addItem">+ 添加商品</text>
         </view>
       </view>
-      <text class="scan-hint">提示：请手动添加商品，或使用右侧 📱 按钮扫条码快速选择</text>
+      <text class="scan-hint">「新建商品」录入系统未收录的商品，「添加商品」从已有商品中选择</text>
       <view v-for="(item, index) in form.items" :key="index" class="item-card">
         <view class="item-header">
           <text>商品 {{ index + 1 }}</text>

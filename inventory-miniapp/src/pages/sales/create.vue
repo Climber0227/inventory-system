@@ -368,8 +368,11 @@ async function handleSubmit() {
         <text class="add-link" @click="addItem">+ 添加</text>
       </view>
       <text class="scan-hint">提示：请手动添加商品，或使用右侧 📱 按钮扫条码快速选择</text>
-      <view v-if="multiWarehouse" style="background:#e8f5e9;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#2e7d32;line-height:1.6;">
-        💡 <b>多仓库出库</b>：每行独立选仓库，提交后自动拆为多张出库单，各自审批。子订单不可合并、不可再拆，请确认每行仓库无误。
+      <view v-if="multiWarehouse && form.items.length === 0" style="background:#e8f5e9;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#2e7d32;line-height:1.6;">
+        💡 已开启<b>多仓库出库</b>，点击「+ 添加」开始添加商品，每行可独立选择出库仓库
+      </view>
+      <view v-if="multiWarehouse && form.items.length > 0" style="background:#e8f5e9;border-radius:6px;padding:10px 12px;margin-bottom:8px;font-size:12px;color:#2e7d32;line-height:1.6;">
+        💡 <b>多仓库出库</b>：提交后自动拆为多张出库单各自审批，请确认每行仓库无误
       </view>
       <view v-for="(item, index) in form.items" :key="index" class="item-card">
         <view class="item-header">
