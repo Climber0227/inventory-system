@@ -248,6 +248,22 @@ public class SalesOrderService {
         order.setStatus(OrderStatus.DRAFT);
         BigDecimal totalAmount = BigDecimal.ZERO;
         int totalQty = 0;
+
+        // 库存校验：汇总每行商品在对应仓库的可用库存
+        for (SalesOrderItem item : items) {
+            Long whId = order.getWarehouseId(); // 子订单已绑定单一仓库
+            if (item.getProductId() == null) continue;
+            // 查询该商品在该仓库的所有批次总库存
+            Integer available = inventoryMapper.sumQuantityByProductAndWarehouse(item.getProductId(), whId);
+            int avail = available != null ? available : 0;
+            if (item.getQuantity() != null && item.getQuantity() > avail) {
+                throw new BusinessException(
+                    "商品「" + item.getProductName() + "」库存不足（需要 " + item.getQuantity() +
+                    "，仓库可用 " + avail + "）"
+                );
+            }
+        }
+
         for (SalesOrderItem item : items) {
             item.setOrderId(null);
             if (item.getUnitPrice() == null) item.setUnitPrice(BigDecimal.ZERO);

@@ -31,4 +31,9 @@ public interface InventoryMapper extends BaseMapper<Inventory> {
             " AND warehouse_id = #{warehouseId} GROUP BY product_id</script>")
     List<Map<String, Object>> selectProductStatsByIdsAndWarehouse(@org.apache.ibatis.annotations.Param("ids") java.util.Set<Long> ids,
                                                                    @org.apache.ibatis.annotations.Param("warehouseId") Long warehouseId);
+
+    /** 查询某商品在某仓库的可用库存总量 */
+    @Select("SELECT SUM(quantity) FROM inventory WHERE product_id = #{productId} AND warehouse_id = #{warehouseId}")
+    Integer sumQuantityByProductAndWarehouse(@org.apache.ibatis.annotations.Param("productId") Long productId,
+                                              @org.apache.ibatis.annotations.Param("warehouseId") Long warehouseId);
 }
